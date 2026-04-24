@@ -1,6 +1,10 @@
 const { app, BrowserWindow, Menu } = require("electron");
 const path = require("path");
 
+app.commandLine.appendSwitch("no-sandbox");
+app.commandLine.appendSwitch("disable-gpu-sandbox");
+app.commandLine.appendSwitch("disable-setuid-sandbox");
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
