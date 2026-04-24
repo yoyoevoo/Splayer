@@ -17,6 +17,7 @@
     "appId": "com.replit.musicplayer",
     "productName": "Music Player",
     "asar": true,
+    "afterPack": "build/after-pack.cjs",
     "directories": {
       "output": "release"
     },
