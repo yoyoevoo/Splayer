@@ -35,3 +35,4 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 - Custom cover art and metadata edits per track persist in IndexedDB via `idb`, keyed by filename + size.
 - Playback uses native HTML `<audio>`; state is held in `src/lib/player-context.tsx`.
 - Files never leave the browser — fully local.
+- Also packaged as a native Linux desktop app via Electron (`electron/main.cjs`); `pnpm --filter @workspace/music-player run dist:linux` builds an AppImage to `artifacts/music-player/release/`.

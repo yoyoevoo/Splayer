@@ -3,11 +3,40 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
+    "build:desktop": "BASE_PATH=./ PORT=5173 vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "electron": "pnpm run build:desktop && electron .",
+    "dist:linux": "pnpm run build:desktop && electron-builder --linux AppImage --x64"
+  },
+  "build": {
+    "appId": "com.replit.musicplayer",
+    "productName": "Music Player",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/public/**/*"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "AudioVideo;Audio;Player",
+      "executableName": "music-player",
+      "icon": "build/icon.png",
+      "synopsis": "A focused local music player",
+      "description": "Play your downloaded music with embedded cover art or your own custom covers."
+    }
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -53,6 +82,8 @@
     "clsx": "catalog:",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "catalog:",
     "input-otp": "^1.4.2",

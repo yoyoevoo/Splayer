@@ -1,0 +1,2 @@
+artifacts/music-player/release/MusicPlayer-linux-x86_64.AppImage filter=lfs diff=lfs merge=lfs -text
+artifacts/music-player/release/linux-unpacked/music-player filter=lfs diff=lfs merge=lfs -text
