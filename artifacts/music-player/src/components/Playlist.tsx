@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ImagePlus,
+  ListMusic,
+  Music,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -15,28 +17,101 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
-import type { Track } from "@/lib/types";
+import type { Playlist as PlaylistType, Track } from "@/lib/types";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
+import { PlaylistsView } from "./PlaylistsView";
+import { PlaylistDetailView } from "./PlaylistDetailView";
+import { NewPlaylistDialog } from "./NewPlaylistDialog";
+
+type Tab = "library" | "playlists";
+type View =
+  | { kind: "library" }
+  | { kind: "playlists" }
+  | { kind: "playlist"; id: string };
 
 export function Playlist() {
+  const [view, setView] = useState<View>({ kind: "library" });
+
+  const tab: Tab = view.kind === "library" ? "library" : "playlists";
+
+  return (
+    <aside className="w-full md:w-80 lg:w-96 flex flex-col border-l border-card-border bg-sidebar/40 backdrop-blur min-h-0">
+      <div className="px-3 pt-3 pb-1 border-b border-card-border">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-md bg-muted/40">
+          <button
+            type="button"
+            onClick={() => setView({ kind: "library" })}
+            className={cn(
+              "flex items-center justify-center gap-1.5 text-xs h-7 rounded transition-colors",
+              tab === "library"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            data-testid="tab-library"
+          >
+            <Music className="w-3.5 h-3.5" />
+            Library
+          </button>
+          <button
+            type="button"
+            onClick={() => setView({ kind: "playlists" })}
+            className={cn(
+              "flex items-center justify-center gap-1.5 text-xs h-7 rounded transition-colors",
+              tab === "playlists"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            data-testid="tab-playlists"
+          >
+            <ListMusic className="w-3.5 h-3.5" />
+            Playlists
+          </button>
+        </div>
+      </div>
+
+      {view.kind === "library" && <LibraryView />}
+      {view.kind === "playlists" && (
+        <PlaylistsView
+          onOpenPlaylist={(p) => setView({ kind: "playlist", id: p.id })}
+        />
+      )}
+      {view.kind === "playlist" && (
+        <PlaylistDetailView
+          playlistId={view.id}
+          onBack={() => setView({ kind: "playlists" })}
+        />
+      )}
+    </aside>
+  );
+}
+
+function LibraryView() {
   const {
     tracks,
+    playlists,
     currentTrack,
     isPlaying,
-    playIndex,
+    playFromList,
     addFiles,
     removeTrack,
     setCustomCover,
+    addTracksToPlaylist,
   } = usePlayer();
   const [query, setQuery] = useState("");
   const [editTrack, setEditTrack] = useState<Track | null>(null);
+  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const coverTrackIdRef = useRef<string | null>(null);
@@ -73,7 +148,7 @@ export function Playlist() {
   };
 
   return (
-    <aside className="w-full md:w-80 lg:w-96 flex flex-col border-l border-card-border bg-sidebar/40 backdrop-blur">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="p-4 space-y-3 border-b border-card-border">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium tracking-wide text-foreground/80 uppercase">
@@ -127,7 +202,13 @@ export function Playlist() {
                       "group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
                       isActive && "bg-accent",
                     )}
-                    onClick={() => playIndex(i)}
+                    onClick={() =>
+                      playFromList(
+                        tracks.map((tr) => tr.id),
+                        i,
+                        "Library",
+                      )
+                    }
                     data-testid={`track-${t.id}`}
                   >
                     <div className="relative">
@@ -177,6 +258,14 @@ export function Playlist() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <AddToPlaylistSubmenu
+                          playlists={playlists}
+                          onAdd={(plId) =>
+                            addTracksToPlaylist(plId, [t.id])
+                          }
+                          onCreate={() => setNewPlaylistFor(t.id)}
+                        />
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
@@ -242,7 +331,63 @@ export function Playlist() {
           track={editTrack}
         />
       )}
-    </aside>
+      <NewPlaylistDialog
+        open={newPlaylistFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setNewPlaylistFor(null);
+        }}
+        onCreated={(id) => {
+          if (newPlaylistFor) {
+            addTracksToPlaylist(id, [newPlaylistFor]);
+          }
+          setNewPlaylistFor(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function AddToPlaylistSubmenu({
+  playlists,
+  onAdd,
+  onCreate,
+}: {
+  playlists: PlaylistType[];
+  onAdd: (id: string) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <ListMusic className="w-4 h-4 mr-2" />
+        Add to playlist
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreate();
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New playlist…
+          </DropdownMenuItem>
+          {playlists.length > 0 && <DropdownMenuSeparator />}
+          {playlists.map((p) => (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd(p.id);
+              }}
+            >
+              {p.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 }
 

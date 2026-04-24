@@ -20,3 +20,23 @@ export function gradientFor(seed: string): string {
   const h2 = (h1 + 60 + (hashString(seed + "x") % 120)) % 360;
   return `linear-gradient(135deg, hsl(${h1} 55% 35%), hsl(${h2} 60% 22%))`;
 }
+
+export function formatLongDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0min";
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (h > 0) return `${h}h ${m}min`;
+  return `${m}min`;
+}
+
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+export function formatMonthYear(timestamp: number): string {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}

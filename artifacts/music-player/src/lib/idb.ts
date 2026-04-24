@@ -19,10 +19,23 @@ interface StoredTrack {
   customAlbum?: string;
 }
 
+interface StoredPlaylist {
+  id: string;
+  name: string;
+  trackIds: string[];
+  customCover?: Blob;
+  createdAt: number;
+  updatedAt: number;
+}
+
 interface MusicPlayerDB extends DBSchema {
   tracks: {
     key: string;
     value: StoredTrack;
+  };
+  playlists: {
+    key: string;
+    value: StoredPlaylist;
   };
 }
 
@@ -30,10 +43,15 @@ let dbPromise: Promise<IDBPDatabase<MusicPlayerDB>> | null = null;
 
 async function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<MusicPlayerDB>('music-player-db', 2, {
+    dbPromise = openDB<MusicPlayerDB>('music-player-db', 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           db.createObjectStore('tracks', { keyPath: 'id' });
+        }
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains('playlists')) {
+            db.createObjectStore('playlists', { keyPath: 'id' });
+          }
         }
       },
     });
@@ -81,4 +99,21 @@ export async function saveTrackMetadata(
   await saveStoredTrack(id, data);
 }
 
-export type { StoredTrack };
+// ----- playlists -----
+
+export async function getAllStoredPlaylists(): Promise<StoredPlaylist[]> {
+  const db = await getDB();
+  return db.getAll('playlists');
+}
+
+export async function saveStoredPlaylist(p: StoredPlaylist) {
+  const db = await getDB();
+  await db.put('playlists', p);
+}
+
+export async function deleteStoredPlaylist(id: string) {
+  const db = await getDB();
+  await db.delete('playlists', id);
+}
+
+export type { StoredTrack, StoredPlaylist };
