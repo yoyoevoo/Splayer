@@ -9,7 +9,13 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { extractMetadata, generateTrackId } from "./metadata";
-import { getTrackMetadata, saveTrackMetadata } from "./idb";
+import {
+  deleteStoredTrack,
+  getAllStoredTracks,
+  getTrackMetadata,
+  saveStoredTrack,
+  saveTrackMetadata,
+} from "./idb";
 import type { RepeatMode, Track } from "./types";
 
 interface PlayerContextValue {
@@ -258,6 +264,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             customCoverUrl,
           };
           newTracks.push(track);
+
+          // Persist file blob and metadata so the track survives a restart.
+          try {
+            await saveStoredTrack(id, {
+              fileBlob: file,
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size,
+              addedAt: stored?.addedAt ?? Date.now(),
+              metaTitle: meta.title,
+              metaArtist: meta.artist,
+              metaAlbum: meta.album,
+              metaYear: meta.year,
+              metaDuration: meta.duration,
+              embeddedCover: meta.coverBlob,
+            });
+          } catch (storageErr) {
+            console.warn("Failed to persist track", file.name, storageErr);
+          }
         } catch (e) {
           console.warn("Failed to add track", file.name, e);
         }
@@ -270,7 +295,63 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Restore previously-saved tracks on first mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = await getAllStoredTracks();
+        if (cancelled || stored.length === 0) return;
+        stored.sort((a, b) => (a.addedAt ?? 0) - (b.addedAt ?? 0));
+        const restored: Track[] = [];
+        for (const s of stored) {
+          if (!s.fileBlob) continue;
+          const file = new File(
+            [s.fileBlob],
+            s.fileName ?? "track",
+            { type: s.fileType || s.fileBlob.type || "audio/mpeg" },
+          );
+          const embeddedCoverUrl = s.embeddedCover
+            ? URL.createObjectURL(s.embeddedCover)
+            : undefined;
+          const customCoverUrl = s.customCover
+            ? URL.createObjectURL(s.customCover)
+            : undefined;
+          restored.push({
+            id: s.id,
+            file,
+            url: URL.createObjectURL(file),
+            title:
+              s.customTitle ??
+              s.metaTitle ??
+              (s.fileName ?? "Unknown").replace(/\.[^/.]+$/, ""),
+            artist: s.customArtist ?? s.metaArtist ?? "Unknown Artist",
+            album: s.customAlbum ?? s.metaAlbum ?? "Unknown Album",
+            year: s.metaYear,
+            duration: s.metaDuration ?? 0,
+            embeddedCoverUrl,
+            customCoverUrl,
+          });
+        }
+        if (!cancelled && restored.length > 0) {
+          setTracks((prev) => {
+            const have = new Set(prev.map((t) => t.id));
+            return [...prev, ...restored.filter((t) => !have.has(t.id))];
+          });
+        }
+      } catch (e) {
+        console.warn("Failed to restore saved tracks", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const removeTrack = useCallback((id: string) => {
+    deleteStoredTrack(id).catch((e) =>
+      console.warn("Failed to delete stored track", id, e),
+    );
     setTracks((prev) => {
       const idx = prev.findIndex((t) => t.id === id);
       if (idx < 0) return prev;

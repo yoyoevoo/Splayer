@@ -6,11 +6,12 @@ export interface TrackMetadata {
   artist: string;
   album: string;
   year?: string;
+  coverBlob?: Blob;
   coverUrl?: string;
   duration?: number; // in seconds
 }
 
-export function generateTrackId(file: File): string {
+export function generateTrackId(file: { name: string; size: number }): string {
   return `${file.name}-${file.size}`;
 }
 
@@ -19,54 +20,58 @@ export function extractMetadata(file: File): Promise<TrackMetadata> {
     // Also try to get duration via a temporary audio element
     const objectUrl = URL.createObjectURL(file);
     const audio = new Audio();
-    
+
     let duration = 0;
-    
+
+    const finish = (extra: Partial<TrackMetadata>) => {
+      try { URL.revokeObjectURL(objectUrl); } catch {}
+      resolve({
+        title: extra.title ?? file.name.replace(/\.[^/.]+$/, ""),
+        artist: extra.artist ?? "Unknown Artist",
+        album: extra.album ?? "Unknown Album",
+        year: extra.year,
+        coverBlob: extra.coverBlob,
+        coverUrl: extra.coverUrl,
+        duration: extra.duration ?? duration ?? 0,
+      });
+    };
+
     audio.addEventListener('loadedmetadata', () => {
       duration = audio.duration;
-      
+
       jsmediatags.read(file, {
         onSuccess: function (tag: any) {
           const tags = tag.tags;
-          let coverUrl = undefined;
+          let coverBlob: Blob | undefined;
+          let coverUrl: string | undefined;
 
           if (tags.picture) {
             const data = tags.picture.data;
             const format = tags.picture.format;
             const uint8Array = new Uint8Array(data);
-            const blob = new Blob([uint8Array], { type: format });
-            coverUrl = URL.createObjectURL(blob);
+            coverBlob = new Blob([uint8Array], { type: format });
+            coverUrl = URL.createObjectURL(coverBlob);
           }
 
-          resolve({
-            title: tags.title || file.name.replace(/\.[^/.]+$/, ""),
-            artist: tags.artist || "Unknown Artist",
-            album: tags.album || "Unknown Album",
+          finish({
+            title: tags.title,
+            artist: tags.artist,
+            album: tags.album,
             year: tags.year,
+            coverBlob,
             coverUrl,
             duration,
           });
         },
         onError: function (error: any) {
           console.warn('Error reading tags', error, file.name);
-          resolve({
-            title: file.name.replace(/\.[^/.]+$/, ""),
-            artist: "Unknown Artist",
-            album: "Unknown Album",
-            duration,
-          });
+          finish({ duration });
         }
       });
     });
 
     audio.addEventListener('error', () => {
-      // Fallback if we can't load metadata
-      resolve({
-        title: file.name.replace(/\.[^/.]+$/, ""),
-        artist: "Unknown Artist",
-        album: "Unknown Album",
-        duration: 0,
-      });
+      finish({});
     });
 
     audio.src = objectUrl;
