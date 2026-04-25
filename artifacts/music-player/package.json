@@ -25,6 +25,12 @@
       "electron/**/*",
       "dist/public/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/yt-dlp",
+        "to": "yt-dlp"
+      }
+    ],
     "linux": {
       "target": [
         {

@@ -67,7 +67,18 @@ ipcMain.handle("yt-search", async (_event, query) => {
   }
 });
 
-// ── YouTube download helpers ──────────────────────────────────────────────────
+// ── yt-dlp helpers ────────────────────────────────────────────────────────────
+
+const { spawn } = require("child_process");
+
+function getYtDlpPath() {
+  // In packaged AppImage: process.resourcesPath = .../resources/
+  // In dev: resources/ is next to electron/
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, "..", "resources");
+  return path.join(resourcesDir, "yt-dlp");
+}
 
 function extractVideoId(url) {
   const patterns = [
@@ -83,213 +94,137 @@ function extractVideoId(url) {
   return null;
 }
 
-// Innertube clients — each has its own API key and exact context fields.
-// IOS client is tried first; it returns direct (non-encrypted) audio URLs.
-const INNERTUBE_CLIENTS = [
-  {
-    name: "IOS",
-    apiKey: "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
-    headers: {
-      "User-Agent": "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5 like Mac OS X;)",
-      "X-YouTube-Client-Name": "5",
-      "X-YouTube-Client-Version": "19.29.1",
-      "Origin": "https://www.youtube.com",
-    },
-    context: {
-      clientName: "IOS",
-      clientVersion: "19.29.1",
-      deviceMake: "Apple",
-      deviceModel: "iPhone16,2",
-      userAgent: "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5 like Mac OS X;)",
-      osName: "iPhone",
-      osVersion: "17.5.1.21F90",
-      hl: "en",
-      gl: "US",
-      timeZone: "UTC",
-      utcOffsetMinutes: 0,
-    },
-  },
-  {
-    name: "ANDROID",
-    apiKey: "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w",
-    headers: {
-      "User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US; Pixel 8) gzip",
-      "X-YouTube-Client-Name": "3",
-      "X-YouTube-Client-Version": "19.29.37",
-      "Origin": "https://www.youtube.com",
-    },
-    context: {
-      clientName: "ANDROID",
-      clientVersion: "19.29.37",
-      userAgent: "com.google.android.youtube/19.29.37 (Linux; U; Android 14; en_US; Pixel 8) gzip",
-      androidSdkVersion: 34,
-      osName: "Android",
-      osVersion: "14",
-      hl: "en",
-      gl: "US",
-      timeZone: "UTC",
-      utcOffsetMinutes: 0,
-    },
-  },
-];
+// Run yt-dlp and return stdout as a Buffer.
+// onStderr receives raw stderr text (used for progress parsing).
+function runYtDlp(args, onStderr) {
+  return new Promise((resolve, reject) => {
+    const bin = getYtDlpPath();
+    const proc = spawn(bin, args, { env: { ...process.env } });
 
-async function innertubePlayer(videoId, client) {
-  const res = await fetch(
-    `https://www.youtube.com/youtubei/v1/player?key=${client.apiKey}&prettyPrint=false`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...client.headers },
-      body: JSON.stringify({
-        videoId,
-        context: { client: client.context },
-        playbackContext: {
-          contentPlaybackContext: { signatureTimestamp: 0 },
-        },
-      }),
-    },
-  );
-  if (!res.ok) throw new Error(`Innertube HTTP ${res.status} (${client.name})`);
-  return res.json();
-}
+    const outChunks = [];
+    let errText = "";
 
-function pickBestAudioFormat(streamingData) {
-  const all = [
-    ...(streamingData.adaptiveFormats || []),
-    ...(streamingData.formats || []),
-  ];
-  // Direct-URL audio-only formats (no cipher needed)
-  const audio = all
-    .filter((f) => f.mimeType?.startsWith("audio/") && f.url)
-    .sort((a, b) => parseInt(b.bitrate || "0", 10) - parseInt(a.bitrate || "0", 10));
-  return audio[0] || null;
-}
-
-// Extract video details from Innertube player data into a normalised struct
-function normalisePlayerData(data) {
-  const d = data.videoDetails || {};
-  const thumbs = d.thumbnail?.thumbnails || [];
-  return {
-    meta: {
-      title:        d.title || "Unknown",
-      author:       d.author || "Unknown",
-      durationSecs: parseInt(d.lengthSeconds || "0", 10),
-      thumbnailUrl: thumbs[thumbs.length - 1]?.url ?? null,
-    },
-    format: pickBestAudioFormat(data.streamingData || {}),
-  };
-}
-
-// Try Innertube clients in order, then fall back to @distube/ytdl-core
-async function resolveAudio(videoId) {
-  const errors = [];
-
-  // ── Strategy 1: Innertube clients ──────────────────────────────────────────
-  for (const client of INNERTUBE_CLIENTS) {
-    try {
-      const data = await innertubePlayer(videoId, client);
-      const status = data?.playabilityStatus?.status;
-      if (status === "OK" || status === "CONTENT_CHECK_REQUIRED") {
-        const { meta, format } = normalisePlayerData(data);
-        if (format) return { meta, format, ua: client.headers["User-Agent"] };
+    proc.stdout.on("data", (chunk) => outChunks.push(Buffer.from(chunk)));
+    proc.stderr.on("data", (data) => {
+      const text = data.toString();
+      errText += text;
+      if (onStderr) onStderr(text);
+    });
+    proc.on("error", (e) =>
+      reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
+    );
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        // Extract the most meaningful error line from stderr
+        const errLine =
+          errText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.toLowerCase().includes("error"))
+            .pop() ||
+          errText.trim().split("\n").pop() ||
+          "yt-dlp exited with code " + code;
+        reject(new Error(errLine));
+      } else {
+        resolve(Buffer.concat(outChunks));
       }
-      errors.push(`${client.name}: ${data?.playabilityStatus?.reason || status}`);
-    } catch (e) {
-      errors.push(`${client.name}: ${e.message}`);
-    }
-  }
-
-  // ── Strategy 2: @distube/ytdl-core with session agent ───────────────────────
-  try {
-    const ytdl = require("@distube/ytdl-core");
-    const agent = ytdl.createAgent();
-    const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const info = await ytdl.getInfo(ytUrl, { agent });
-    const d = info.videoDetails;
-    const thumbs = d.thumbnails || [];
-    const meta = {
-      title:        d.title || "Unknown",
-      author:       typeof d.author === "string" ? d.author : (d.author?.name || "Unknown"),
-      durationSecs: parseInt(d.lengthSeconds || "0", 10),
-      thumbnailUrl: thumbs[thumbs.length - 1]?.url ?? null,
-    };
-    const audioFmts = ytdl.filterFormats(info.formats, "audioonly")
-      .sort((a, b) => parseInt(b.bitrate || "0", 10) - parseInt(a.bitrate || "0", 10));
-    if (!audioFmts.length) throw new Error("No audio-only format from ytdl");
-    const fmt = audioFmts[0];
-    return {
-      meta,
-      format: { url: fmt.url, mimeType: fmt.mimeType, bitrate: fmt.bitrate },
-      ua: "Mozilla/5.0",
-    };
-  } catch (e) {
-    errors.push(`ytdl-core: ${e.message}`);
-  }
-
-  throw new Error(errors.join(" | "));
+    });
+  });
 }
 
-// ── IPC: YouTube — fetch video info ─────────────────────────────────────────
+// Parse yt-dlp's progress output and return 0-100 percentage
+function parseYtDlpProgress(line) {
+  const m = line.match(/\[download\]\s+([\d.]+)%/);
+  return m ? Math.round(parseFloat(m[1])) : null;
+}
+
+// ── IPC: YouTube — fetch video info (via yt-dlp) ────────────────────────────
 ipcMain.handle("yt-get-info", async (_event, url) => {
   try {
     const videoId = extractVideoId(url);
     if (!videoId) throw new Error("Invalid YouTube URL");
-    const { meta } = await resolveAudio(videoId);
-    return meta;
+
+    const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const jsonBuf = await runYtDlp([
+      "--dump-json",
+      "--no-playlist",
+      "--no-warnings",
+      ytUrl,
+    ]);
+
+    const info = JSON.parse(jsonBuf.toString("utf8"));
+    return {
+      title:        info.title        || "Unknown",
+      author:       info.uploader     || info.channel || "Unknown",
+      durationSecs: Math.round(info.duration || 0),
+      thumbnailUrl: info.thumbnail    || null,
+    };
   } catch (err) {
     return { error: String(err.message ?? err) };
   }
 });
 
-// ── IPC: YouTube — download audio ────────────────────────────────────────────
+// ── IPC: YouTube — download audio (via yt-dlp) ───────────────────────────────
 ipcMain.handle("yt-download", async (event, url) => {
   try {
     const videoId = extractVideoId(url);
     if (!videoId) throw new Error("Invalid YouTube URL");
 
-    const { meta, format, ua } = await resolveAudio(videoId);
+    const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    const rawMime  = (format.mimeType || "audio/webm").split(";")[0].trim();
-    const ext = rawMime.includes("mp4") ? "m4a"
-              : rawMime.includes("ogg") ? "ogg"
-              : "webm";
+    // ── Step 1: Get metadata + best audio format id ───────────────────────────
+    const jsonBuf = await runYtDlp([
+      "--dump-json",
+      "--no-playlist",
+      "--no-warnings",
+      ytUrl,
+    ]);
+    const info = JSON.parse(jsonBuf.toString("utf8"));
 
-    // Stream the audio bytes with progress reporting
-    const audioRes = await fetch(format.url, {
-      headers: { "User-Agent": ua, "Range": "bytes=0-" },
-    });
+    // Pick the best audio-only format
+    const audioFmts = (info.formats || [])
+      .filter((f) => f.vcodec === "none" && f.acodec !== "none" && f.acodec)
+      .sort((a, b) => (b.abr || 0) - (a.abr || 0));
 
-    if (!audioRes.ok && audioRes.status !== 206) {
-      throw new Error(`Audio fetch failed (HTTP ${audioRes.status})`);
-    }
+    const bestFmt = audioFmts[0];
+    const formatId = bestFmt ? String(bestFmt.format_id) : "bestaudio";
+    const ext      = bestFmt?.ext || "webm";
+    const mimeType = ext === "m4a" ? "audio/mp4"
+                   : ext === "ogg" ? "audio/ogg"
+                   : "audio/webm";
 
-    const contentLength = (() => {
-      const cr = audioRes.headers.get("content-range");
-      if (cr) return parseInt(cr.split("/")[1] || "0", 10);
-      return parseInt(audioRes.headers.get("content-length") || "0", 10);
-    })();
+    const meta = {
+      title:        info.title    || "Unknown",
+      author:       info.uploader || info.channel || "Unknown",
+      durationSecs: Math.round(info.duration || 0),
+      thumbnailUrl: info.thumbnail || null,
+    };
 
-    const chunks = [];
-    let downloaded = 0;
+    // ── Step 2: Download audio to stdout, report progress via stderr ──────────
+    const audioBuf = await runYtDlp(
+      [
+        "-f", formatId,
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "-o", "-",     // pipe audio bytes to stdout
+        ytUrl,
+      ],
+      (stderrLine) => {
+        const pct = parseYtDlpProgress(stderrLine);
+        if (pct !== null) {
+          event.sender.send("yt-progress", {
+            downloaded: pct,
+            total: 100,
+            percent: pct,
+          });
+        }
+      },
+    );
 
-    const reader = audioRes.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(Buffer.from(value));
-      downloaded += value.length;
-      if (contentLength > 0) {
-        event.sender.send("yt-progress", {
-          downloaded,
-          total: contentLength,
-          percent: Math.min(99, Math.round((downloaded / contentLength) * 100)),
-        });
-      }
-    }
+    event.sender.send("yt-progress", { downloaded: 100, total: 100, percent: 100 });
 
-    event.sender.send("yt-progress", { downloaded, total: downloaded, percent: 100 });
-
-    const buf = Buffer.concat(chunks);
-    return { bytes: new Uint8Array(buf), mimeType: rawMime, ext, ...meta };
+    return { bytes: new Uint8Array(audioBuf), mimeType, ext, ...meta };
   } catch (err) {
     return { error: String(err.message ?? err) };
   }
