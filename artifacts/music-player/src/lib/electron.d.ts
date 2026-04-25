@@ -44,14 +44,25 @@ declare global {
       /** Download audio from a YouTube URL. */
       ytDownload: (url: string) => Promise<YtDownloadResult | { error: string }>;
 
+      /** Download video (MP4) from a YouTube URL. */
+      ytDownloadVideo: (url: string) => Promise<YtDownloadResult | { error: string }>;
+
       /** Returns the port of the local YouTube embed proxy server. */
       getEmbedPort: () => Promise<number>;
 
       /**
-       * Subscribe to download-progress events.
+       * Subscribe to audio download-progress events.
        * Returns an unsubscribe function.
        */
       onYtProgress: (
+        cb: (data: { downloaded: number; total: number; percent: number }) => void,
+      ) => () => void;
+
+      /**
+       * Subscribe to video download-progress events.
+       * Returns an unsubscribe function.
+       */
+      onYtProgressVideo: (
         cb: (data: { downloaded: number; total: number; percent: number }) => void,
       ) => () => void;
     };

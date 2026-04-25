@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
 const http = require("http");
+const os = require("os");
 
 app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
@@ -61,6 +62,15 @@ const embedServer = http.createServer((req, res) => {
       try { proc.kill("SIGTERM"); } catch (_) {}
     });
 
+    return;
+  }
+
+  // /embed?v=VIDEOID — serve a tiny HTML shim with the YouTube iframe so the
+  // embed origin is http://localhost (not file://) and Error 153 is avoided.
+  if (parsedUrl.pathname === "/embed") {
+    const html = `<!DOCTYPE html><html><head><style>*{margin:0;padding:0;box-sizing:border-box}body,iframe{width:100%;height:100vh;background:#000;border:none}</style></head><body><iframe src="https://www.youtube.com/embed/${vid}?autoplay=1&rel=0" allow="autoplay;encrypted-media;fullscreen" allowfullscreen frameborder="0" style="width:100%;height:100%"></iframe></body></html>`;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(html);
     return;
   }
 
@@ -294,6 +304,69 @@ ipcMain.handle("yt-download", async (event, url) => {
     event.sender.send("yt-progress", { downloaded: 100, total: 100, percent: 100 });
 
     return { bytes: new Uint8Array(audioBuf), mimeType, ext, ...meta };
+  } catch (err) {
+    return { error: String(err.message ?? err) };
+  }
+});
+
+// ── IPC: YouTube — download video as MP4 (via yt-dlp) ───────────────────────
+ipcMain.handle("yt-download-video", async (event, url) => {
+  try {
+    const videoId = extractVideoId(url);
+    if (!videoId) throw new Error("Invalid YouTube URL");
+
+    const ytUrl  = `https://www.youtube.com/watch?v=${videoId}`;
+    const tmpOut = path.join(os.tmpdir(), `ytdl_video_${videoId}_${Date.now()}.mp4`);
+
+    // ── Step 1: Get metadata ─────────────────────────────────────────────────
+    const jsonBuf = await runYtDlp([
+      "--dump-json",
+      "--no-playlist",
+      "--no-warnings",
+      ytUrl,
+    ]);
+    const info = JSON.parse(jsonBuf.toString("utf8"));
+
+    const meta = {
+      title:        info.title    || "Unknown",
+      author:       info.uploader || info.channel || "Unknown",
+      durationSecs: Math.round(info.duration || 0),
+      thumbnailUrl: info.thumbnail || null,
+    };
+
+    // ── Step 2: Download best MP4 to a temp file ─────────────────────────────
+    // Use a temp file because yt-dlp may need to merge video+audio streams.
+    await runYtDlp(
+      [
+        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "--merge-output-format", "mp4",
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "-o", tmpOut,
+        ytUrl,
+      ],
+      (stderrLine) => {
+        const pct = parseYtDlpProgress(stderrLine);
+        if (pct !== null) {
+          event.sender.send("yt-progress-video", {
+            downloaded: pct,
+            total: 100,
+            percent: pct,
+          });
+        }
+      },
+    );
+
+    event.sender.send("yt-progress-video", { downloaded: 100, total: 100, percent: 100 });
+
+    const videoBuf = await fs.readFile(tmpOut).catch(() => null);
+    // Clean up temp file (best-effort)
+    fs.unlink(tmpOut).catch(() => {});
+
+    if (!videoBuf) throw new Error("Video temp file missing after download");
+
+    return { bytes: new Uint8Array(videoBuf), mimeType: "video/mp4", ext: "mp4", ...meta };
   } catch (err) {
     return { error: String(err.message ?? err) };
   }

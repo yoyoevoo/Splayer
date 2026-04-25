@@ -18,16 +18,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Download audio from a YouTube URL. Returns bytes + metadata. */
   ytDownload: (url) => ipcRenderer.invoke("yt-download", url),
 
+  /** Download video (MP4) from a YouTube URL. Returns bytes + metadata. */
+  ytDownloadVideo: (url) => ipcRenderer.invoke("yt-download-video", url),
+
   /** Returns the port of the local YouTube embed proxy server. */
   getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
 
   /**
-   * Subscribe to download progress events.
+   * Subscribe to audio download progress events.
    * Returns an unsubscribe function — call it when done.
    */
   onYtProgress: (cb) => {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on("yt-progress", handler);
     return () => ipcRenderer.removeListener("yt-progress", handler);
+  },
+
+  /**
+   * Subscribe to video download progress events.
+   * Returns an unsubscribe function — call it when done.
+   */
+  onYtProgressVideo: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("yt-progress-video", handler);
+    return () => ipcRenderer.removeListener("yt-progress-video", handler);
   },
 });
