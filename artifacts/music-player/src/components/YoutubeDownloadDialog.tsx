@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, Loader2, Music2, Search, Youtube } from "lucide-react";
+import { Download, Loader2, Music2, Play, Search, X, Youtube } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -78,6 +78,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const [query,         setQuery]         = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewId,     setPreviewId]     = useState<string | null>(null);
 
   // URL-mode state
   const [url,           setUrl]           = useState("");
@@ -99,6 +100,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       setQuery("");
       setSearchResults([]);
       setDownloadingId(null);
+      setPreviewId(null);
       setUrl("");
       setUrlInfo(null);
       setDownloadInfo(null);
@@ -301,6 +303,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                     setErrorMsg("");
                     setSearchResults([]);
                     setUrlInfo(null);
+                    setPreviewId(null);
                   }}
                   className={cn(
                     "flex-1 py-1.5 font-medium transition-colors",
@@ -360,49 +363,102 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                 )}
 
                 {stage === "results" && searchResults.length > 0 && (
-                  <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
-                    {searchResults.map((r) => (
-                      <div
-                        key={r.videoId}
-                        className="flex items-center gap-3 rounded-lg border border-card-border bg-card px-3 py-2"
-                      >
-                        {/* Thumbnail */}
-                        {r.thumbnail ? (
-                          <img
-                            src={r.thumbnail}
-                            alt=""
-                            className="h-11 w-16 shrink-0 rounded object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-11 w-16 shrink-0 items-center justify-center rounded bg-muted">
-                            <Music2 className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        )}
-
-                        {/* Info */}
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-1 text-sm font-medium leading-snug">
-                            {r.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {r.channelName}
-                            {r.durationText ? ` · ${r.durationText}` : ""}
-                          </p>
-                        </div>
-
-                        {/* Download button */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0 gap-1.5 text-xs"
-                          disabled={downloadingId === r.videoId}
-                          onClick={() => handleSearchDownload(r)}
+                  <div className="space-y-2">
+                    {/* Results list */}
+                    <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                      {searchResults.map((r) => (
+                        <div
+                          key={r.videoId}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border bg-card px-3 py-2 transition-colors",
+                            previewId === r.videoId
+                              ? "border-primary/60"
+                              : "border-card-border",
+                          )}
                         >
-                          <Download className="h-3 w-3" />
-                          Download
-                        </Button>
+                          {/* Thumbnail */}
+                          {r.thumbnail ? (
+                            <img
+                              src={r.thumbnail}
+                              alt=""
+                              className="h-11 w-16 shrink-0 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-11 w-16 shrink-0 items-center justify-center rounded bg-muted">
+                              <Music2 className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          )}
+
+                          {/* Info */}
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-1 text-sm font-medium leading-snug">
+                              {r.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {r.channelName}
+                              {r.durationText ? ` · ${r.durationText}` : ""}
+                            </p>
+                          </div>
+
+                          {/* Play preview button */}
+                          <Button
+                            size="sm"
+                            variant={previewId === r.videoId ? "default" : "ghost"}
+                            className="shrink-0 h-7 w-7 p-0"
+                            title={previewId === r.videoId ? "Stop preview" : "Preview"}
+                            onClick={() =>
+                              setPreviewId(previewId === r.videoId ? null : r.videoId)
+                            }
+                          >
+                            {previewId === r.videoId ? (
+                              <X className="h-3.5 w-3.5" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+
+                          {/* Download button */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 gap-1.5 text-xs"
+                            disabled={downloadingId === r.videoId}
+                            onClick={() => handleSearchDownload(r)}
+                          >
+                            <Download className="h-3 w-3" />
+                            Download
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Inline YouTube preview panel */}
+                    {previewId && (
+                      <div className="rounded-lg border border-primary/40 bg-card overflow-hidden">
+                        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Preview
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => setPreviewId(null)}
+                          >
+                            <X className="h-3 w-3" />
+                            Close preview
+                          </Button>
+                        </div>
+                        <iframe
+                          key={previewId}
+                          src={`https://www.youtube.com/embed/${previewId}?autoplay=1&controls=1&rel=0`}
+                          allow="autoplay; encrypted-media"
+                          allowFullScreen
+                          className="w-full"
+                          style={{ height: "195px", border: "none", display: "block" }}
+                        />
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
