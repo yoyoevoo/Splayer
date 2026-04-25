@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
 const path = require("path");
+const fs = require("fs/promises");
 
 app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
@@ -17,6 +18,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -25,6 +27,26 @@ function createWindow() {
   const indexPath = path.join(__dirname, "..", "dist", "public", "index.html");
   win.loadFile(indexPath);
 }
+
+// ── IPC: OS folder-picker ───────────────────────────────────────────────────
+ipcMain.handle("show-folder-dialog", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
+    title: "Choose folder to save modified files",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+// ── IPC: write bytes to a file path on disk ─────────────────────────────────
+ipcMain.handle("write-file", async (_event, { filePath, bytes }) => {
+  try {
+    await fs.writeFile(filePath, Buffer.from(bytes));
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

@@ -29,7 +29,9 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "category": "AudioVideo;Audio;Player",
@@ -107,6 +109,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "browser-id3-writer": "^6.3.1",
     "idb": "^8.0.3",
     "jsmediatags": "^3.9.7"
   }

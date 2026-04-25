@@ -83,7 +83,7 @@ interface PlayerContextValue {
   clearCustomCover: (id: string) => Promise<void>;
   updateTrackInfo: (
     id: string,
-    info: { title?: string; artist?: string; album?: string },
+    info: { title?: string; artist?: string; album?: string; year?: string; genre?: string },
   ) => Promise<void>;
   toggleLike: (id: string) => Promise<void>;
   // playlists
@@ -699,7 +699,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             title: stored?.customTitle ?? meta.title,
             artist: stored?.customArtist ?? meta.artist,
             album: stored?.customAlbum ?? meta.album,
-            year: meta.year,
+            year: stored?.customYear ?? meta.year,
+            genre: stored?.customGenre ?? meta.genre,
             duration: meta.duration ?? 0,
             embeddedCoverUrl: meta.coverUrl,
             customCoverUrl,
@@ -721,6 +722,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               metaArtist: meta.artist,
               metaAlbum: meta.album,
               metaYear: meta.year,
+              metaGenre: meta.genre,
               metaDuration: meta.duration,
               embeddedCover: meta.coverBlob,
               playCount,
@@ -778,7 +780,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 (s.fileName ?? "Unknown").replace(/\.[^/.]+$/, ""),
               artist: s.customArtist ?? s.metaArtist ?? "Unknown Artist",
               album: s.customAlbum ?? s.metaAlbum ?? "Unknown Album",
-              year: s.metaYear,
+              year: s.customYear ?? s.metaYear,
+              genre: s.customGenre ?? s.metaGenre,
               duration: s.metaDuration ?? 0,
               embeddedCoverUrl,
               customCoverUrl,
@@ -906,12 +909,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const updateTrackInfo = useCallback(
     async (
       id: string,
-      info: { title?: string; artist?: string; album?: string },
+      info: { title?: string; artist?: string; album?: string; year?: string; genre?: string },
     ) => {
       await saveTrackMetadata(id, {
-        customTitle: info.title,
+        customTitle:  info.title,
         customArtist: info.artist,
-        customAlbum: info.album,
+        customAlbum:  info.album,
+        customYear:   info.year,
+        customGenre:  info.genre,
       });
       setTracks((prev) =>
         prev.map((t) =>
@@ -919,9 +924,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             ? t
             : {
                 ...t,
-                title: info.title ?? t.title,
+                title:  info.title  ?? t.title,
                 artist: info.artist ?? t.artist,
-                album: info.album ?? t.album,
+                album:  info.album  ?? t.album,
+                year:   info.year   ?? t.year,
+                genre:  info.genre  ?? t.genre,
               },
         ),
       );

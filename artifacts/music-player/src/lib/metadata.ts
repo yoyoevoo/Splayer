@@ -6,6 +6,7 @@ export interface TrackMetadata {
   artist: string;
   album: string;
   year?: string;
+  genre?: string;
   coverBlob?: Blob;
   coverUrl?: string;
   duration?: number; // in seconds
@@ -58,6 +59,7 @@ export function extractMetadata(file: File): Promise<TrackMetadata> {
             artist: tags.artist,
             album: tags.album,
             year: tags.year,
+            genre: tags.genre,
             coverBlob,
             coverUrl,
             duration,

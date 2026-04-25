@@ -28,9 +28,11 @@ export function EditTrackDialog({
   track,
 }: EditTrackDialogProps) {
   const { updateTrackInfo, setCustomCover, clearCustomCover } = usePlayer();
-  const [title, setTitle] = useState(track.title);
+  const [title,  setTitle]  = useState(track.title);
   const [artist, setArtist] = useState(track.artist);
-  const [album, setAlbum] = useState(track.album);
+  const [album,  setAlbum]  = useState(track.album);
+  const [year,   setYear]   = useState(track.year   ?? "");
+  const [genre,  setGenre]  = useState(track.genre  ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -38,11 +40,13 @@ export function EditTrackDialog({
       setTitle(track.title);
       setArtist(track.artist);
       setAlbum(track.album);
+      setYear(track.year  ?? "");
+      setGenre(track.genre ?? "");
     }
   }, [open, track]);
 
   const onSave = async () => {
-    await updateTrackInfo(track.id, { title, artist, album });
+    await updateTrackInfo(track.id, { title, artist, album, year, genre });
     onOpenChange(false);
   };
 
@@ -61,8 +65,8 @@ export function EditTrackDialog({
         <DialogHeader>
           <DialogTitle>Edit track</DialogTitle>
           <DialogDescription>
-            Change the title, artist, album, or cover art. Your edits stay on
-            this device.
+            Change the title, artist, album, year, genre, or cover art. Your
+            edits stay on this device.
           </DialogDescription>
         </DialogHeader>
 
@@ -124,6 +128,28 @@ export function EditTrackDialog({
                 onChange={(e) => setAlbum(e.target.value)}
                 data-testid="input-edit-album"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="year">Year</Label>
+                <Input
+                  id="year"
+                  value={year}
+                  placeholder="e.g. 2024"
+                  onChange={(e) => setYear(e.target.value)}
+                  data-testid="input-edit-year"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="genre">Genre</Label>
+                <Input
+                  id="genre"
+                  value={genre}
+                  placeholder="e.g. Pop"
+                  onChange={(e) => setGenre(e.target.value)}
+                  data-testid="input-edit-genre"
+                />
+              </div>
             </div>
           </div>
         </div>

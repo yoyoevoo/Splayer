@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Tags,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
+import { BulkTagEditor } from "./BulkTagEditor";
 import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
@@ -128,6 +130,7 @@ function LibraryView() {
   const [query, setQuery] = useState("");
   const [editTrack, setEditTrack] = useState<Track | null>(null);
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
+  const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -177,6 +180,18 @@ function LibraryView() {
           <h2 className="text-sm font-medium tracking-wide text-foreground/80 uppercase">
             Library
           </h2>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
+              onClick={() => setBulkEditorOpen(true)}
+              title="Bulk Tag Editor"
+              data-testid="button-bulk-tag-editor"
+            >
+              <Tags className="w-3.5 h-3.5" />
+              <span className="sr-only">Bulk Tag Editor</span>
+            </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -201,6 +216,7 @@ function LibraryView() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -393,6 +409,10 @@ function LibraryView() {
           track={editTrack}
         />
       )}
+      <BulkTagEditor
+        open={bulkEditorOpen}
+        onOpenChange={setBulkEditorOpen}
+      />
       <NewPlaylistDialog
         open={newPlaylistFor !== null}
         onOpenChange={(o) => {

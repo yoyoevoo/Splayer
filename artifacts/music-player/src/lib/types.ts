@@ -8,6 +8,7 @@ export interface Track {
   artist: string;
   album: string;
   year?: string;
+  genre?: string;
   duration: number;
   embeddedCoverUrl?: string;
   customCoverUrl?: string;

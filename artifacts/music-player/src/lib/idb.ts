@@ -11,12 +11,15 @@ interface StoredTrack {
   metaArtist?: string;
   metaAlbum?: string;
   metaYear?: string;
+  metaGenre?: string;
   metaDuration?: number;
   embeddedCover?: Blob;
   customCover?: Blob;
   customTitle?: string;
   customArtist?: string;
   customAlbum?: string;
+  customYear?: string;
+  customGenre?: string;
   playCount?: number;
   lastPlayedAt?: number;
   liked?: boolean;
@@ -98,6 +101,8 @@ export async function saveTrackMetadata(
     customTitle?: string;
     customArtist?: string;
     customAlbum?: string;
+    customYear?: string;
+    customGenre?: string;
   },
 ) {
   await saveStoredTrack(id, data);
