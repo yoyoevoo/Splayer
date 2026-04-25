@@ -1,17 +1,34 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ImagePlus, Pencil } from "lucide-react";
+import { BarChart2, ImagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { Visualizer } from "./Visualizer";
+import { cn } from "@/lib/utils";
+
+function readVizPref(): boolean {
+  try { return localStorage.getItem("viz-enabled") !== "false"; }
+  catch { return true; }
+}
+
+function writeVizPref(v: boolean) {
+  try { localStorage.setItem("viz-enabled", String(v)); } catch {}
+}
 
 export function NowPlaying() {
   const { currentTrack, setCustomCover } = usePlayer();
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const [editOpen, setEditOpen] = useState(false);
+  const [editOpen,     setEditOpen]     = useState(false);
+  const [vizEnabled,   setVizEnabled]   = useState(readVizPref);
+
+  const toggleViz = () => {
+    const next = !vizEnabled;
+    setVizEnabled(next);
+    writeVizPref(next);
+  };
 
   if (!currentTrack) {
     return (
@@ -29,9 +46,8 @@ export function NowPlaying() {
     );
   }
 
-  const cover = trackCoverUrl(currentTrack);
-
-  const onPickCover = () => coverInputRef.current?.click();
+  const cover    = trackCoverUrl(currentTrack);
+  const onPickCover  = () => coverInputRef.current?.click();
   const onCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) await setCustomCover(currentTrack.id, file);
@@ -40,6 +56,7 @@ export function NowPlaying() {
 
   return (
     <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center px-8 py-12">
+      {/* Blurred background */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentTrack.id + "-bg"}
@@ -79,17 +96,27 @@ export function NowPlaying() {
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="flex flex-col items-center gap-8 max-w-md w-full"
         >
-          {/* Album art */}
+          {/* Album art + visualizer container */}
           <div className="relative w-full max-w-sm group">
-            <AlbumCover
-              src={cover}
-              seed={currentTrack.title + currentTrack.artist}
-              size="xl"
-              className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
-            />
+
+            {/* ── Visualizer: z-index 0, absolute inset, behind album art ── */}
+            <Visualizer visible={vizEnabled} />
+
+            {/* ── Album art: z-index 1, sits on top of visualizer ── */}
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <AlbumCover
+                src={cover}
+                seed={currentTrack.title + currentTrack.artist}
+                size="xl"
+                className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
+              />
+            </div>
+
+            {/* ── Change-cover hover overlay: z-index 2 ── */}
             <button
               onClick={onPickCover}
               className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ zIndex: 2 }}
               data-testid="button-change-cover"
             >
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur text-white text-sm">
@@ -97,13 +124,26 @@ export function NowPlaying() {
                 Change cover
               </div>
             </button>
+
+            {/* ── Visualizer toggle: top-right corner, z-index 3 ── */}
+            <button
+              onClick={toggleViz}
+              title={vizEnabled ? "Hide visualizer" : "Show visualizer"}
+              className={cn(
+                "absolute top-2 right-2 flex items-center justify-center",
+                "w-7 h-7 rounded-full backdrop-blur-sm transition-all duration-200",
+                "border border-white/20 shadow-sm",
+                vizEnabled
+                  ? "bg-orange-500/80 text-white"
+                  : "bg-black/40 text-white/50 hover:text-white/80",
+              )}
+              style={{ zIndex: 3 }}
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          {/* Visualizer strip — always visible below the album art */}
-          <div className="relative w-full max-w-sm h-16 rounded-xl overflow-hidden bg-black/20">
-            <Visualizer />
-          </div>
-
+          {/* Track info */}
           <div className="text-center space-y-2 w-full">
             <h1 className="text-3xl font-serif tracking-tight text-foreground line-clamp-2">
               {currentTrack.title}
