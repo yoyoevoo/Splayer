@@ -169,6 +169,56 @@ function DownloadMenuPortal({
   );
 }
 
+// ── Download button (module-level so React never remounts it mid-interaction) ─
+
+interface DownloadButtonProps {
+  id:                 string;
+  onPick:             (t: DownloadType) => void;
+  downloadingId:      string | null;
+  downloadMenuFor:    { id: string; rect: DOMRect } | null;
+  setDownloadMenuFor: (v: { id: string; rect: DOMRect } | null) => void;
+}
+
+function DownloadButton({
+  id,
+  onPick,
+  downloadingId,
+  downloadMenuFor,
+  setDownloadMenuFor,
+}: DownloadButtonProps) {
+  const isOpen = downloadMenuFor?.id === id;
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (isOpen) {
+      setDownloadMenuFor(null);
+    } else {
+      setDownloadMenuFor({ id, rect: e.currentTarget.getBoundingClientRect() });
+    }
+  };
+
+  return (
+    <div className="shrink-0">
+      {isOpen && downloadMenuFor && (
+        <DownloadMenuPortal
+          anchorRect={downloadMenuFor.rect}
+          onPick={onPick}
+          onClose={() => setDownloadMenuFor(null)}
+        />
+      )}
+      <Button
+        size="sm"
+        variant={isOpen ? "default" : "outline"}
+        className="gap-1.5 text-xs"
+        disabled={downloadingId === id}
+        onClick={handleClick}
+      >
+        <Download className="h-3 w-3" />
+        Download
+      </Button>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -403,45 +453,18 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const isDone        = stage === "done";
   const showControls  = isElectron && !isDownloading && !isDone;
 
-  // ── Download button used in both search rows and URL mode ────────────────
-  function DownloadButton({ id, onPick }: { id: string; onPick: (t: DownloadType) => void }) {
-    const isOpen = downloadMenuFor?.id === id;
-
-    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-      if (isOpen) {
-        setDownloadMenuFor(null);
-      } else {
-        setDownloadMenuFor({ id, rect: e.currentTarget.getBoundingClientRect() });
-      }
-    };
-
-    return (
-      <div className="shrink-0">
-        {isOpen && downloadMenuFor && (
-          <DownloadMenuPortal
-            anchorRect={downloadMenuFor.rect}
-            onPick={onPick}
-            onClose={() => setDownloadMenuFor(null)}
-          />
-        )}
-        <Button
-          size="sm"
-          variant={isOpen ? "default" : "outline"}
-          className="gap-1.5 text-xs"
-          disabled={downloadingId === id}
-          onClick={handleClick}
-        >
-          <Download className="h-3 w-3" />
-          Download
-        </Button>
-      </div>
-    );
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent
+        className="max-w-lg"
+        onInteractOutside={(e) => {
+          // Prevent Radix from closing the dialog on mousedown when our portal
+          // menu is open — the menu item's click fires AFTER mousedown, so without
+          // this the dialog closes before the download can start.
+          if (downloadMenuFor) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Youtube className="w-4 h-4 text-red-500" />
@@ -678,6 +701,9 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                           {/* Download button with popup */}
                           <DownloadButton
                             id={r.videoId}
+                            downloadingId={downloadingId}
+                            downloadMenuFor={downloadMenuFor}
+                            setDownloadMenuFor={setDownloadMenuFor}
                             onPick={(type) => {
                               setDownloadingId(r.videoId);
                               performDownload(r.url, {
@@ -812,6 +838,9 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                   <div className="flex justify-end">
                     <DownloadButton
                       id="url"
+                      downloadingId={downloadingId}
+                      downloadMenuFor={downloadMenuFor}
+                      setDownloadMenuFor={setDownloadMenuFor}
                       onPick={(type) =>
                         performDownload(url.trim(), urlInfo!, type)
                       }
