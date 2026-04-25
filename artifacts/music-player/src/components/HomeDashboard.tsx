@@ -9,11 +9,19 @@ import {
   Music,
   Play,
   Star,
+  Trash2,
   User,
   Zap,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
+import { DeleteTrackDialog } from "./DeleteTrackDialog";
 import {
   SMART_PLAYLISTS,
   playlistTracks,
@@ -148,17 +156,46 @@ function MixCard({ mix, onClick }: { mix: Mix; onClick: () => void }) {
 
 // ── TrackCard ─────────────────────────────────────────────────────────────────
 
-function TrackCard({ track, sub, onClick }: { track: Track; sub: string; onClick: () => void }) {
+function TrackCard({
+  track,
+  sub,
+  onClick,
+  onDelete,
+}: {
+  track: Track;
+  sub: string;
+  onClick: () => void;
+  onDelete?: (track: Track) => void;
+}) {
   const cover = trackCoverUrl(track);
   return (
-    <button onClick={onClick} className="shrink-0 w-[118px] text-left group focus:outline-none">
-      <div className="w-[118px] h-[118px] rounded-xl overflow-hidden mb-2 shadow-md group-hover:shadow-xl group-hover:scale-[1.03] transition-all duration-200">
-        <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
-      </div>
-      <p className="text-xs font-medium truncate text-foreground leading-tight">{track.title}</p>
-      <p className="text-[11px] text-muted-foreground truncate mt-0.5">{track.artist || "Unknown"}</p>
-      <p className="text-[10px] text-primary/80 mt-0.5">{sub}</p>
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button onClick={onClick} className="shrink-0 w-[118px] text-left group focus:outline-none">
+          <div className="w-[118px] h-[118px] rounded-xl overflow-hidden mb-2 shadow-md group-hover:shadow-xl group-hover:scale-[1.03] transition-all duration-200">
+            <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+          </div>
+          <p className="text-xs font-medium truncate text-foreground leading-tight">{track.title}</p>
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{track.artist || "Unknown"}</p>
+          <p className="text-[10px] text-primary/80 mt-0.5">{sub}</p>
+        </button>
+      </ContextMenuTrigger>
+      {onDelete && (
+        <ContextMenuContent className="w-52">
+          <ContextMenuItem onClick={onClick}>
+            <Play className="w-4 h-4 mr-2" />
+            Play
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onDelete(track)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete file from disk
+          </ContextMenuItem>
+        </ContextMenuContent>
+      )}
+    </ContextMenu>
   );
 }
 
@@ -209,35 +246,56 @@ function TopRecentRow({
   rank,
   count,
   onClick,
+  onDelete,
 }: {
   track: Track;
   rank: number;
   count: number;
   onClick: () => void;
+  onDelete?: (track: Track) => void;
 }) {
   const cover = trackCoverUrl(track);
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-3 w-full px-3 py-2 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
-    >
-      <span className="text-xs tabular-nums text-muted-foreground/50 w-4 shrink-0 text-right">
-        {rank}
-      </span>
-      <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-        <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-          {track.title}
-        </p>
-        <p className="text-xs text-muted-foreground truncate">{track.artist || "Unknown"}</p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <span className="text-xs font-bold text-primary tabular-nums">{count}</span>
-        <span className="text-[10px] text-muted-foreground">plays</span>
-      </div>
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          onClick={onClick}
+          className="flex items-center gap-3 w-full px-3 py-2 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
+        >
+          <span className="text-xs tabular-nums text-muted-foreground/50 w-4 shrink-0 text-right">
+            {rank}
+          </span>
+          <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
+            <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
+              {track.title}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">{track.artist || "Unknown"}</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs font-bold text-primary tabular-nums">{count}</span>
+            <span className="text-[10px] text-muted-foreground">plays</span>
+          </div>
+        </button>
+      </ContextMenuTrigger>
+      {onDelete && (
+        <ContextMenuContent className="w-52">
+          <ContextMenuItem onClick={onClick}>
+            <Play className="w-4 h-4 mr-2" />
+            Play
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onDelete(track)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete file from disk
+          </ContextMenuItem>
+        </ContextMenuContent>
+      )}
+    </ContextMenu>
   );
 }
 
@@ -247,10 +305,12 @@ function AlbumDetailView({
   group,
   onBack,
   play,
+  onDelete,
 }: {
   group: AlbumGroup;
   onBack: () => void;
   play: (tracks: Track[], idx: number) => void;
+  onDelete?: (track: Track) => void;
 }) {
   const cover = group.tracks.map((t) => trackCoverUrl(t)).find(Boolean);
   const totalDur = group.tracks.reduce((s, t) => s + (t.duration || 0), 0);
@@ -296,27 +356,45 @@ function AlbumDetailView({
         {/* Track list */}
         <div className="space-y-0.5">
           {sorted.map((t, i) => (
-            <button
-              key={t.id}
-              onClick={() => play(sorted, i)}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
-            >
-              <span className="text-xs tabular-nums text-muted-foreground/50 w-5 shrink-0 text-right">
-                {i + 1}
-              </span>
-              <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-                  {t.title}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">{t.artist}</p>
-              </div>
-              <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">
-                {formatTime(t.duration)}
-              </span>
-            </button>
+            <ContextMenu key={t.id}>
+              <ContextMenuTrigger asChild>
+                <button
+                  onClick={() => play(sorted, i)}
+                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
+                >
+                  <span className="text-xs tabular-nums text-muted-foreground/50 w-5 shrink-0 text-right">
+                    {i + 1}
+                  </span>
+                  <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
+                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
+                      {t.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{t.artist}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">
+                    {formatTime(t.duration)}
+                  </span>
+                </button>
+              </ContextMenuTrigger>
+              {onDelete && (
+                <ContextMenuContent className="w-52">
+                  <ContextMenuItem onClick={() => play(sorted, i)}>
+                    <Play className="w-4 h-4 mr-2" />
+                    Play
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => onDelete(t)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete file from disk
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+            </ContextMenu>
           ))}
         </div>
       </div>
@@ -330,10 +408,12 @@ function ArtistDetailView({
   group,
   onBack,
   play,
+  onDelete,
 }: {
   group: ArtistGroup;
   onBack: () => void;
   play: (tracks: Track[], idx: number) => void;
+  onDelete?: (track: Track) => void;
 }) {
   const cover = group.tracks.map((t) => trackCoverUrl(t)).find(Boolean);
   const sorted = useMemo(
@@ -377,24 +457,42 @@ function ArtistDetailView({
         {/* Track list */}
         <div className="space-y-0.5">
           {sorted.map((t, i) => (
-            <button
-              key={t.id}
-              onClick={() => play(sorted, i)}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
-            >
-              <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-                  {t.title}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">{t.album || "Unknown Album"}</p>
-              </div>
-              <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">
-                {formatTime(t.duration)}
-              </span>
-            </button>
+            <ContextMenu key={t.id}>
+              <ContextMenuTrigger asChild>
+                <button
+                  onClick={() => play(sorted, i)}
+                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
+                >
+                  <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
+                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
+                      {t.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{t.album || "Unknown Album"}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">
+                    {formatTime(t.duration)}
+                  </span>
+                </button>
+              </ContextMenuTrigger>
+              {onDelete && (
+                <ContextMenuContent className="w-52">
+                  <ContextMenuItem onClick={() => play(sorted, i)}>
+                    <Play className="w-4 h-4 mr-2" />
+                    Play
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => onDelete(t)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete file from disk
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+            </ContextMenu>
           ))}
         </div>
       </div>
@@ -407,9 +505,12 @@ function ArtistDetailView({
 const DAY_FILTERS = [1, 3, 6, 9, 12, 15, 18] as const;
 
 export function HomeDashboard() {
-  const { tracks, playlists, playFromList } = usePlayer();
+  const { tracks, playlists, playFromList, deleteTrackWithFile } = usePlayer();
   const [topDays, setTopDays] = useState<number>(3);
   const [dashView, setDashView] = useState<DashView>({ kind: "dashboard" });
+  const [deleteTarget, setDeleteTarget] = useState<Track | null>(null);
+
+  const handleDelete = (track: Track) => setDeleteTarget(track);
 
   // Play history from localStorage — refresh when tracks change (new plays logged)
   const [playLog, setPlayLog] = useState<Array<{ id: string; ts: number }>>(() => readPlayLog());
@@ -541,21 +642,39 @@ export function HomeDashboard() {
 
   if (dashView.kind === "album") {
     return (
-      <AlbumDetailView
-        group={dashView.group}
-        onBack={() => setDashView({ kind: "dashboard" })}
-        play={play}
-      />
+      <>
+        <AlbumDetailView
+          group={dashView.group}
+          onBack={() => setDashView({ kind: "dashboard" })}
+          play={play}
+          onDelete={handleDelete}
+        />
+        <DeleteTrackDialog
+          track={deleteTarget}
+          open={!!deleteTarget}
+          onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+          onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
+        />
+      </>
     );
   }
 
   if (dashView.kind === "artist") {
     return (
-      <ArtistDetailView
-        group={dashView.group}
-        onBack={() => setDashView({ kind: "dashboard" })}
-        play={play}
-      />
+      <>
+        <ArtistDetailView
+          group={dashView.group}
+          onBack={() => setDashView({ kind: "dashboard" })}
+          play={play}
+          onDelete={handleDelete}
+        />
+        <DeleteTrackDialog
+          track={deleteTarget}
+          open={!!deleteTarget}
+          onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+          onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
+        />
+      </>
     );
   }
 
@@ -588,6 +707,7 @@ export function HomeDashboard() {
                   track={t}
                   sub={timeAgo(t.lastPlayedAt!)}
                   onClick={() => play(recentListens, i)}
+                  onDelete={handleDelete}
                 />
               ))}
             </HScroll>
@@ -625,6 +745,7 @@ export function HomeDashboard() {
                   rank={i + 1}
                   count={count}
                   onClick={() => play(topRecents.map((r) => r.track), i)}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
@@ -645,6 +766,7 @@ export function HomeDashboard() {
                 track={t}
                 sub={daysAgo(t.addedAt)}
                 onClick={() => play(recentlyAdded, i)}
+                onDelete={handleDelete}
               />
             ))}
           </HScroll>
@@ -683,6 +805,12 @@ export function HomeDashboard() {
         )}
 
       </div>
+      <DeleteTrackDialog
+        track={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
+      />
     </ScrollArea>
   );
 }

@@ -83,6 +83,7 @@ interface PlayerContextValue {
   toggleCrossfade: () => void;
   setCrossfadeSecs: (s: number) => void;
   removeTrack: (id: string) => void;
+  deleteTrackWithFile: (id: string) => Promise<void>;
   setCustomCover: (id: string, file: File) => Promise<void>;
   clearCustomCover: (id: string) => Promise<void>;
   updateTrackInfo: (
@@ -965,6 +966,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const deleteTrackWithFile = useCallback(async (id: string) => {
+    // Find the track's file path before removing it from state.
+    setTracks((prev) => {
+      const track = prev.find((t) => t.id === id);
+      if (track) {
+        const filePath = (track.file as any)?.path as string | undefined;
+        if (filePath && window.electronAPI?.deleteFile) {
+          window.electronAPI.deleteFile(filePath).catch((e: unknown) =>
+            console.warn("Failed to delete file from disk", e),
+          );
+        }
+      }
+      return prev; // state update happens via removeTrack below
+    });
+    removeTrack(id);
+  }, [removeTrack]);
+
   const setCustomCover = useCallback(async (id: string, file: File) => {
     const blob = file;
     await saveTrackMetadata(id, { customCover: blob });
@@ -1268,6 +1286,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,
+      deleteTrackWithFile,
       setCustomCover,
       clearCustomCover,
       updateTrackInfo,
@@ -1321,6 +1340,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,
+      deleteTrackWithFile,
       setCustomCover,
       clearCustomCover,
       updateTrackInfo,

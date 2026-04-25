@@ -41,6 +41,7 @@ import { AlbumCover } from "./AlbumCover";
 import { MosaicCover } from "./MosaicCover";
 import { EditPlaylistDialog } from "./EditPlaylistDialog";
 import { AddTracksDialog } from "./AddTracksDialog";
+import { DeleteTrackDialog } from "./DeleteTrackDialog";
 
 interface PlaylistDetailViewProps {
   playlistId: string;
@@ -60,6 +61,7 @@ export function PlaylistDetailView({
     deletePlaylist,
     setPlaylistCover,
     removeTrackFromPlaylist,
+    deleteTrackWithFile,
     toggleLike,
   } = usePlayer();
 
@@ -67,6 +69,7 @@ export function PlaylistDetailView({
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   const plTracks = useMemo(
@@ -385,6 +388,14 @@ export function PlaylistDetailView({
                           <Trash2 className="w-4 h-4 mr-2" />
                           Remove from "{playlist.name}"
                         </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          onClick={() => setDeleteTarget(t)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete file from disk
+                        </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
                   </motion.li>
@@ -419,6 +430,12 @@ export function PlaylistDetailView({
         open={adding}
         onOpenChange={setAdding}
         playlist={playlist}
+      />
+      <DeleteTrackDialog
+        track={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
       />
     </div>
   );

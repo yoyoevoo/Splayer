@@ -53,6 +53,9 @@ declare global {
       /** Returns the port of the local YouTube embed proxy server. */
       getEmbedPort: () => Promise<number>;
 
+      /** Permanently delete a file from disk. */
+      deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+
       /**
        * Subscribe to audio download-progress events.
        * Returns an unsubscribe function.

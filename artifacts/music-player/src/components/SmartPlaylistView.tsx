@@ -8,12 +8,22 @@ import {
   Play,
   Search,
   Sparkles,
+  Trash2,
   TrendingUp,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
+import { DeleteTrackDialog } from "./DeleteTrackDialog";
 import {
   trackCoverUrl,
   smartPlaylistTracks,
@@ -66,9 +76,10 @@ function emptyMessage(kind: SmartPlaylistKind): string {
 }
 
 export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
-  const { tracks, currentTrack, isPlaying, playFromList, toggleLike } =
+  const { tracks, currentTrack, isPlaying, playFromList, toggleLike, deleteTrackWithFile } =
     usePlayer();
   const [query, setQuery] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
 
   const meta = SMART_PLAYLISTS.find((s) => s.kind === kind);
   const Icon = smartIcon(kind);
@@ -185,6 +196,8 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                     exit={{ opacity: 0, x: 20 }}
                     transition={{ duration: 0.2 }}
                   >
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
                     <div
                       className={cn(
                         "group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
@@ -263,6 +276,30 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                         {formatTime(t.duration)}
                       </span>
                     </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-52">
+                        <ContextMenuItem
+                          onClick={() =>
+                            playFromList(
+                              computed.map((tr) => tr.id),
+                              i,
+                              meta?.name ?? "Smart Playlist",
+                            )
+                          }
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Play
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          onClick={() => setDeleteTarget(t)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete file from disk
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   </motion.li>
                 );
               })}
@@ -275,6 +312,12 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
           </ul>
         )}
       </ScrollArea>
+      <DeleteTrackDialog
+        track={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
+      />
     </div>
   );
 }

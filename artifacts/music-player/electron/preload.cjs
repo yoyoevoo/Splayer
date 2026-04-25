@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Download audio + video then merge into a single MP4 via ffmpeg. */
   ytDownloadMerged: (url) => ipcRenderer.invoke("yt-download-merged", url),
 
+  /** Delete a file from disk by its absolute path. */
+  deleteFile: (filePath) => ipcRenderer.invoke("delete-file", filePath),
+
   /** Returns the port of the local YouTube embed proxy server. */
   getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
 

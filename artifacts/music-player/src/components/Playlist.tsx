@@ -44,6 +44,7 @@ import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { EqualizerBars } from "./EqualizerBars";
+import { DeleteTrackDialog } from "./DeleteTrackDialog";
 import type { SmartPlaylistKind } from "@/lib/types";
 
 type Tab = "library" | "playlists";
@@ -125,12 +126,14 @@ function LibraryView() {
     playFromList,
     addFiles,
     removeTrack,
+    deleteTrackWithFile,
     setCustomCover,
     addTracksToPlaylist,
     toggleLike,
   } = usePlayer();
   const [query, setQuery] = useState("");
   const [editTrack, setEditTrack] = useState<Track | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Track | null>(null);
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [dupFinderOpen, setDupFinderOpen] = useState(false);
@@ -377,7 +380,18 @@ function LibraryView() {
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
-                          Remove
+                          Remove from library
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(t);
+                          }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete file from disk
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -442,6 +456,12 @@ function LibraryView() {
           }
           setNewPlaylistFor(null);
         }}
+      />
+      <DeleteTrackDialog
+        track={deleteTarget}
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
       />
     </div>
   );

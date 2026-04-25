@@ -564,6 +564,16 @@ ipcMain.handle("yt-download-merged", async (event, url) => {
   }
 });
 
+// ── Delete a file from disk ───────────────────────────────────────────────────
+ipcMain.handle("delete-file", async (_event, filePath) => {
+  try {
+    await fs.unlink(filePath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err.message ?? err) };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => {
