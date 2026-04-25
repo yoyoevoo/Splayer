@@ -619,18 +619,17 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                             style={{ display: "block" }}
                           />
                         ) : (
-                          <iframe
+                          <video
                             key={previewId}
+                            controls
+                            autoPlay
                             src={
                               embedPort
-                                ? `http://127.0.0.1:${embedPort}/embed?v=${previewId}`
+                                ? `http://127.0.0.1:${embedPort}/video-stream?v=${previewId}`
                                 : undefined
                             }
-                            allow="autoplay; encrypted-media; fullscreen"
-                            allowFullScreen
-                            className="w-full"
-                            style={{ height: 220, border: "none", display: "block" }}
-                            title="YouTube video preview"
+                            className="w-full bg-black"
+                            style={{ height: 220, display: "block" }}
                           />
                         )}
                       </div>

@@ -65,12 +65,44 @@ const embedServer = http.createServer((req, res) => {
     return;
   }
 
-  // /embed?v=VIDEOID — serve a tiny HTML shim with the YouTube iframe so the
-  // embed origin is http://localhost (not file://) and Error 153 is avoided.
-  if (parsedUrl.pathname === "/embed") {
-    const html = `<!DOCTYPE html><html><head><style>*{margin:0;padding:0;box-sizing:border-box}body,iframe{width:100%;height:100vh;background:#000;border:none}</style></head><body><iframe src="https://www.youtube.com/embed/${vid}?autoplay=1&rel=0" allow="autoplay;encrypted-media;fullscreen" allowfullscreen frameborder="0" style="width:100%;height:100%"></iframe></body></html>`;
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(html);
+  // /video-stream?v=VIDEOID — pipe yt-dlp's combined video+audio stream to a
+  // <video> element. Uses a single-file format (no ffmpeg merge needed) so it
+  // works even when YouTube blocks iframe embeds ("Video unavailable").
+  if (parsedUrl.pathname === "/video-stream") {
+    const ytUrl = `https://www.youtube.com/watch?v=${vid}`;
+
+    // Select a single-container format that includes both video + audio.
+    // "best[height<=480]" targets <=480p combined streams (reliable without ffmpeg).
+    // Fallback chain ensures something always plays.
+    const proc = spawn(
+      getYtDlpPath(),
+      [
+        "-f", "best[height<=480][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best",
+        "--no-playlist",
+        "--no-warnings",
+        "-o", "-",
+        ytUrl,
+      ],
+      { env: { ...process.env } },
+    );
+
+    res.writeHead(200, {
+      "Content-Type":      "video/mp4",
+      "Transfer-Encoding": "chunked",
+      "Cache-Control":     "no-cache",
+    });
+
+    proc.stdout.pipe(res);
+    proc.stderr.on("data", () => {});
+
+    proc.on("error", () => {
+      try { res.end(); } catch (_) {}
+    });
+
+    req.on("close", () => {
+      try { proc.kill("SIGTERM"); } catch (_) {}
+    });
+
     return;
   }
 
