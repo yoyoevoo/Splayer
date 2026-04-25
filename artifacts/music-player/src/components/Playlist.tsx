@@ -336,7 +336,7 @@ function LibraryView() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="audio/*"
+        accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
         multiple
         className="hidden"
         onChange={onAddChange}

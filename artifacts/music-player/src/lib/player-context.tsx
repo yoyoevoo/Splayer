@@ -330,7 +330,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       for (const file of files) {
         if (
           !file.type.startsWith("audio/") &&
-          !/\.(mp3|flac|wav|ogg|m4a|aac|opus)$/i.test(file.name)
+          !file.type.startsWith("video/") &&
+          !/\.(mp3|flac|wav|ogg|m4a|aac|opus|mp4|m4v|mov|webm|mkv)$/i.test(
+            file.name,
+          )
         ) {
           continue;
         }

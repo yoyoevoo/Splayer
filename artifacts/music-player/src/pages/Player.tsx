@@ -208,7 +208,7 @@ export default function Player() {
               <Upload className="w-8 h-8 mx-auto text-primary mb-3" />
               <p className="text-lg font-serif">Drop your music here</p>
               <p className="text-sm text-muted-foreground mt-1">
-                MP3, FLAC, WAV, OGG, M4A
+                MP3, FLAC, WAV, OGG, M4A, MP4
               </p>
             </div>
           </motion.div>
@@ -220,7 +220,7 @@ export default function Player() {
       <input
         ref={fileRef}
         type="file"
-        accept="audio/*"
+        accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
         multiple
         className="hidden"
         onChange={onChange}

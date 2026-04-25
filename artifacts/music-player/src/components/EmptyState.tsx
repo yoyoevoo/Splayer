@@ -71,12 +71,12 @@ export function EmptyState() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground/70">
-          Supports MP3, FLAC, WAV, OGG, M4A
+          Supports MP3, FLAC, WAV, OGG, M4A, MP4
         </p>
         <input
           ref={fileInputRef}
           type="file"
-          accept="audio/*"
+          accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
           multiple
           className="hidden"
           onChange={onChange}
