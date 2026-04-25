@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import ReactDOM from "react-dom";
 import {
   Download,
   Loader2,
@@ -109,37 +110,62 @@ function ProgressBar({
   );
 }
 
-// ── Download option popup ────────────────────────────────────────────────────
+// ── Download option popup (portal — never clipped by overflow containers) ────
 
-function DownloadMenu({ onPick }: { onPick: (t: DownloadType) => void }) {
-  const options: { type: DownloadType; icon: string; label: string }[] = [
-    { type: "audio", icon: "🎵", label: "Audio only (MP3)" },
-    { type: "video", icon: "🎬", label: "Video only (MP4)" },
-    { type: "both",  icon: "📦", label: "Both (MP3 + MP4)" },
-  ];
-  return (
-    <div
-      className={cn(
-        "absolute bottom-full mb-1.5 right-0 z-50",
-        "w-44 rounded-xl border border-card-border bg-card shadow-xl overflow-hidden",
-      )}
-      // stop clicks inside the menu from bubbling to the overlay
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {options.map(({ type, icon, label }) => (
-        <button
-          key={type}
-          onClick={() => onPick(type)}
-          className={cn(
-            "w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium",
-            "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
-          )}
-        >
-          <span className="text-sm">{icon}</span>
-          {label}
-        </button>
-      ))}
-    </div>
+const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
+  { type: "audio", icon: "🎵", label: "Audio only (MP3)" },
+  { type: "video", icon: "🎬", label: "Video only (MP4)" },
+  { type: "both",  icon: "📦", label: "Both (MP3 + MP4)" },
+];
+
+function DownloadMenuPortal({
+  anchorRect,
+  onPick,
+  onClose,
+}: {
+  anchorRect: DOMRect;
+  onPick: (t: DownloadType) => void;
+  onClose: () => void;
+}) {
+  // Position the menu just above the anchor button, pinned to right edge.
+  // Fixed-coordinate portal so it's never clipped by overflow: auto parents.
+  const style: React.CSSProperties = {
+    position:  "fixed",
+    zIndex:    9999,
+    bottom:    window.innerHeight - anchorRect.top + 6,
+    right:     window.innerWidth  - anchorRect.right,
+    minWidth:  176, // w-44
+  };
+
+  return ReactDOM.createPortal(
+    <>
+      {/* Transparent overlay catches outside clicks */}
+      <div
+        className="fixed inset-0"
+        style={{ zIndex: 9998 }}
+        onMouseDown={onClose}
+      />
+      <div
+        style={style}
+        className="rounded-xl border border-card-border bg-card shadow-xl overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {MENU_OPTIONS.map(({ type, icon, label }) => (
+          <button
+            key={type}
+            onClick={() => { onPick(type); onClose(); }}
+            className={cn(
+              "w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium",
+              "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
+            )}
+          >
+            <span className="text-sm">{icon}</span>
+            {label}
+          </button>
+        ))}
+      </div>
+    </>,
+    document.body,
   );
 }
 
@@ -167,9 +193,9 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const [url,     setUrl]     = useState("");
   const [urlInfo, setUrlInfo] = useState<VideoInfo | null>(null);
 
-  // Download-menu state
-  // downloadMenuFor: videoId for search rows, "url" for URL mode, null = closed
-  const [downloadMenuFor, setDownloadMenuFor] = useState<string | null>(null);
+  // Download-menu state: stores the triggering button's id + its bounding rect.
+  // Using parent state (not child state) avoids inner-component hook pitfalls.
+  const [downloadMenuFor, setDownloadMenuFor] = useState<{ id: string; rect: DOMRect } | null>(null);
 
   // Shared download state
   const [downloadInfo,   setDownloadInfo]   = useState<VideoInfo | null>(null);
@@ -318,10 +344,12 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         setProgressAudio(100);
         const safe     = sanitizeFilename(audioResult.title);
         const filename = `${safe}.${audioResult.ext}`;
-        const blob     = new Blob([audioResult.bytes.buffer as ArrayBuffer], { type: audioResult.mimeType });
+        // Copy into a fresh Uint8Array so TypeScript is happy and we're guaranteed
+        // an owned ArrayBuffer (not a Node pool slice).
+        const blob     = new Blob([new Uint8Array(audioResult.bytes)], { type: audioResult.mimeType });
         const file     = new File([blob], filename, { type: audioResult.mimeType });
         await addFiles([file]);
-        await updateTrackInfo(`${filename}-${file.size}`, {
+        await updateTrackInfo(file.name + "-" + file.size, {
           title:  audioResult.title,
           artist: audioResult.author,
         });
@@ -337,10 +365,10 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         setProgressVideo(100);
         const safe     = sanitizeFilename(videoResult.title);
         const filename = `${safe}.${videoResult.ext}`;
-        const blob     = new Blob([videoResult.bytes.buffer as ArrayBuffer], { type: videoResult.mimeType });
+        const blob     = new Blob([new Uint8Array(videoResult.bytes)], { type: videoResult.mimeType });
         const file     = new File([blob], filename, { type: videoResult.mimeType });
         await addFiles([file]);
-        await updateTrackInfo(`${filename}-${file.size}`, {
+        await updateTrackInfo(file.name + "-" + file.size, {
           title:  videoResult.title,
           artist: videoResult.author,
         });
@@ -377,16 +405,31 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
   // ── Download button used in both search rows and URL mode ────────────────
   function DownloadButton({ id, onPick }: { id: string; onPick: (t: DownloadType) => void }) {
-    const isOpen = downloadMenuFor === id;
+    const isOpen = downloadMenuFor?.id === id;
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isOpen) {
+        setDownloadMenuFor(null);
+      } else {
+        setDownloadMenuFor({ id, rect: e.currentTarget.getBoundingClientRect() });
+      }
+    };
+
     return (
-      <div className="relative shrink-0">
-        {isOpen && <DownloadMenu onPick={onPick} />}
+      <div className="shrink-0">
+        {isOpen && downloadMenuFor && (
+          <DownloadMenuPortal
+            anchorRect={downloadMenuFor.rect}
+            onPick={onPick}
+            onClose={() => setDownloadMenuFor(null)}
+          />
+        )}
         <Button
           size="sm"
           variant={isOpen ? "default" : "outline"}
           className="gap-1.5 text-xs"
           disabled={downloadingId === id}
-          onClick={() => setDownloadMenuFor(isOpen ? null : id)}
+          onClick={handleClick}
         >
           <Download className="h-3 w-3" />
           Download
@@ -405,14 +448,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
             Download from YouTube
           </DialogTitle>
         </DialogHeader>
-
-        {/* Transparent overlay to close the download menu on outside click */}
-        {downloadMenuFor && (
-          <div
-            className="fixed inset-0 z-40"
-            onMouseDown={() => setDownloadMenuFor(null)}
-          />
-        )}
 
         {/* ── Not in Electron ── */}
         {!isElectron && (

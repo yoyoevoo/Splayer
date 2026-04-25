@@ -366,12 +366,12 @@ ipcMain.handle("yt-download-video", async (event, url) => {
       thumbnailUrl: info.thumbnail || null,
     };
 
-    // ── Step 2: Download best MP4 to a temp file ─────────────────────────────
-    // Use a temp file because yt-dlp may need to merge video+audio streams.
+    // ── Step 2: Download best pre-muxed MP4 to a temp file ───────────────────
+    // Use a pre-muxed format that never requires ffmpeg for merging.
+    // This mirrors the /video-stream endpoint which already works without ffmpeg.
     await runYtDlp(
       [
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "--merge-output-format", "mp4",
+        "-f", "best[height<=480][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best",
         "--no-playlist",
         "--no-warnings",
         "--newline",
