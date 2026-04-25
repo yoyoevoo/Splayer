@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Download,
-  Headphones,
   Loader2,
   Music2,
-  Play,
   Search,
-  Video,
   X,
   Youtube,
 } from "lucide-react";
@@ -23,8 +20,8 @@ import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Mode      = "search" | "url";
-type MediaMode = "audio" | "video";
+type Mode        = "search" | "url";
+type PreviewMode = "audio" | "video";
 type Stage =
   | "idle"
   | "searching"
@@ -71,8 +68,6 @@ function sanitizeFilename(name: string): string {
     .trim()
     .slice(0, 200);
 }
-
-const MEDIA_MODE_KEY = "yt-media-mode";
 
 // ── Progress bar sub-component ───────────────────────────────────────────────
 
@@ -123,11 +118,9 @@ interface Props {
 export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const { addFiles, updateTrackInfo } = usePlayer();
 
-  const [mode,      setMode]      = useState<Mode>("search");
-  const [mediaMode, setMediaMode] = useState<MediaMode>(
-    () => (localStorage.getItem(MEDIA_MODE_KEY) as MediaMode | null) ?? "audio",
-  );
-  const [stage,         setStage]         = useState<Stage>("idle");
+  const [mode,        setMode]        = useState<Mode>("search");
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("audio");
+  const [stage,       setStage]       = useState<Stage>("idle");
 
   // Search-mode state
   const [query,         setQuery]         = useState("");
@@ -163,13 +156,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     }
   }, [open, api, embedPort]);
 
-  // Persist media mode
-  const switchMediaMode = (m: MediaMode) => {
-    setMediaMode(m);
-    localStorage.setItem(MEDIA_MODE_KEY, m);
-    setPreviewId(null); // stop any active preview when switching
-  };
-
   // Reset when dialog closes
   useEffect(() => {
     if (!open) {
@@ -179,6 +165,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       setSearchResults([]);
       setDownloadingId(null);
       setPreviewId(null);
+      setPreviewMode("audio");
       setUrl("");
       setUrlInfo(null);
       setDownloadInfo(null);
@@ -436,39 +423,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         {showControls && (
           <div className="space-y-3 pt-1">
 
-            {/* ── Audio / Video media-mode toggle ── */}
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-0.5">
-                Preview &amp; Download Mode
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => switchMediaMode("audio")}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-3 font-semibold transition-all",
-                    mediaMode === "audio"
-                      ? "border-primary bg-primary text-primary-foreground shadow-md"
-                      : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                  )}
-                >
-                  <span className="text-xl leading-none">🎵</span>
-                  <span className="text-sm">Audio</span>
-                </button>
-                <button
-                  onClick={() => switchMediaMode("video")}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-3 font-semibold transition-all",
-                    mediaMode === "video"
-                      ? "border-primary bg-primary text-primary-foreground shadow-md"
-                      : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                  )}
-                >
-                  <span className="text-xl leading-none">🎬</span>
-                  <span className="text-sm">Video</span>
-                </button>
-              </div>
-            </div>
-
             {/* ── Search / URL mode toggle ── */}
             <div className="flex rounded-lg border border-card-border overflow-hidden text-sm">
               {(["search", "url"] as Mode[]).map((m) => (
@@ -573,22 +527,50 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                             </p>
                           </div>
 
-                          {/* Play / Stop preview */}
-                          <Button
-                            size="sm"
-                            variant={previewId === r.videoId ? "default" : "ghost"}
-                            className="shrink-0 h-7 w-7 p-0"
-                            title={previewId === r.videoId ? "Stop preview" : "Preview"}
-                            onClick={() =>
-                              setPreviewId(previewId === r.videoId ? null : r.videoId)
-                            }
-                          >
-                            {previewId === r.videoId ? (
-                              <X className="h-3.5 w-3.5" />
-                            ) : (
-                              <Play className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
+                          {/* Per-song preview buttons */}
+                          <div className="flex shrink-0 gap-1">
+                            {/* 🎵 Audio preview */}
+                            <button
+                              title="Preview audio"
+                              onClick={() => {
+                                if (previewId === r.videoId && previewMode === "audio") {
+                                  setPreviewId(null);
+                                } else {
+                                  setPreviewMode("audio");
+                                  setPreviewId(r.videoId);
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-all",
+                                previewId === r.videoId && previewMode === "audio"
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                              )}
+                            >
+                              🎵
+                            </button>
+
+                            {/* 🎬 Video preview */}
+                            <button
+                              title="Preview video"
+                              onClick={() => {
+                                if (previewId === r.videoId && previewMode === "video") {
+                                  setPreviewId(null);
+                                } else {
+                                  setPreviewMode("video");
+                                  setPreviewId(r.videoId);
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-all",
+                                previewId === r.videoId && previewMode === "video"
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                              )}
+                            >
+                              🎬
+                            </button>
+                          </div>
 
                           {/* Download button */}
                           <Button
@@ -610,12 +592,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                       <div className="rounded-lg border border-primary/40 bg-card overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
                           <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-                            {mediaMode === "audio" ? (
-                              <Headphones className="h-3 w-3" />
-                            ) : (
-                              <Video className="h-3 w-3" />
-                            )}
-                            {mediaMode === "audio" ? "Audio preview" : "Video preview"}
+                            {previewMode === "audio" ? "🎵 Audio preview" : "🎬 Video preview"}
                           </span>
                           <Button
                             size="sm"
@@ -628,7 +605,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                           </Button>
                         </div>
 
-                        {mediaMode === "audio" ? (
+                        {previewMode === "audio" ? (
                           <audio
                             key={previewId}
                             controls
