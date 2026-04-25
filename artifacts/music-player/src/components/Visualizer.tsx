@@ -89,8 +89,7 @@ export function Visualizer() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full rounded-2xl pointer-events-none"
-      style={{ zIndex: 1 }}
+      className="absolute inset-0 w-full h-full pointer-events-none"
     />
   );
 }

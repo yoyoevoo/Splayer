@@ -79,18 +79,14 @@ export function NowPlaying() {
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="flex flex-col items-center gap-8 max-w-md w-full"
         >
+          {/* Album art */}
           <div className="relative w-full max-w-sm group">
-            {/* Visualizer canvas sits behind album art */}
-            <Visualizer />
-            {/* z-index: 2 so album art sits above the visualizer canvas (z:1) */}
-            <div className="relative" style={{ zIndex: 2 }}>
-              <AlbumCover
-                src={cover}
-                seed={currentTrack.title + currentTrack.artist}
-                size="xl"
-                className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
-              />
-            </div>
+            <AlbumCover
+              src={cover}
+              seed={currentTrack.title + currentTrack.artist}
+              size="xl"
+              className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
+            />
             <button
               onClick={onPickCover}
               className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -101,6 +97,11 @@ export function NowPlaying() {
                 Change cover
               </div>
             </button>
+          </div>
+
+          {/* Visualizer strip — always visible below the album art */}
+          <div className="relative w-full max-w-sm h-16 rounded-xl overflow-hidden bg-black/20">
+            <Visualizer />
           </div>
 
           <div className="text-center space-y-2 w-full">
