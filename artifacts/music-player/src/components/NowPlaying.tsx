@@ -13,7 +13,6 @@ function readVizPref(): boolean {
   try { return localStorage.getItem("viz-enabled") !== "false"; }
   catch { return true; }
 }
-
 function writeVizPref(v: boolean) {
   try { localStorage.setItem("viz-enabled", String(v)); } catch {}
 }
@@ -21,8 +20,8 @@ function writeVizPref(v: boolean) {
 export function NowPlaying() {
   const { currentTrack, setCustomCover } = usePlayer();
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const [editOpen,     setEditOpen]     = useState(false);
-  const [vizEnabled,   setVizEnabled]   = useState(readVizPref);
+  const [editOpen,   setEditOpen]   = useState(false);
+  const [vizEnabled, setVizEnabled] = useState(readVizPref);
 
   const toggleViz = () => {
     const next = !vizEnabled;
@@ -46,8 +45,8 @@ export function NowPlaying() {
     );
   }
 
-  const cover    = trackCoverUrl(currentTrack);
-  const onPickCover  = () => coverInputRef.current?.click();
+  const cover = trackCoverUrl(currentTrack);
+  const onPickCover   = () => coverInputRef.current?.click();
   const onCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) await setCustomCover(currentTrack.id, file);
@@ -56,7 +55,8 @@ export function NowPlaying() {
 
   return (
     <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center px-8 py-12">
-      {/* Blurred background */}
+
+      {/* Blurred album-art background */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentTrack.id + "-bg"}
@@ -96,13 +96,17 @@ export function NowPlaying() {
           transition={{ duration: 0.5, ease: "easeOut" }}
           className="flex flex-col items-center gap-8 max-w-md w-full"
         >
-          {/* Album art + visualizer container */}
+          {/*
+           * Stacking order inside this container (all use the same parent
+           * stacking context established by position:relative):
+           *   z:1  album art
+           *   z:2  visualizer canvas  ← on TOP, bars visible over the art
+           *   z:3  change-cover overlay
+           *   z:4  visualizer toggle button
+           */}
           <div className="relative w-full max-w-sm group">
 
-            {/* ── Visualizer: z-index 0, absolute inset, behind album art ── */}
-            <Visualizer visible={vizEnabled} />
-
-            {/* ── Album art: z-index 1, sits on top of visualizer ── */}
+            {/* z:1 — album art */}
             <div style={{ position: "relative", zIndex: 1 }}>
               <AlbumCover
                 src={cover}
@@ -112,11 +116,14 @@ export function NowPlaying() {
               />
             </div>
 
-            {/* ── Change-cover hover overlay: z-index 2 ── */}
+            {/* z:2 — visualizer canvas (absolute inset-0, set inside component) */}
+            <Visualizer visible={vizEnabled} />
+
+            {/* z:3 — change-cover hover overlay */}
             <button
               onClick={onPickCover}
               className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ zIndex: 2 }}
+              style={{ zIndex: 3 }}
               data-testid="button-change-cover"
             >
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur text-white text-sm">
@@ -125,19 +132,19 @@ export function NowPlaying() {
               </div>
             </button>
 
-            {/* ── Visualizer toggle: top-right corner, z-index 3 ── */}
+            {/* z:4 — visualizer toggle (top-right corner) */}
             <button
               onClick={toggleViz}
               title={vizEnabled ? "Hide visualizer" : "Show visualizer"}
               className={cn(
                 "absolute top-2 right-2 flex items-center justify-center",
-                "w-7 h-7 rounded-full backdrop-blur-sm transition-all duration-200",
-                "border border-white/20 shadow-sm",
+                "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
+                "transition-all duration-200",
                 vizEnabled
                   ? "bg-orange-500/80 text-white"
-                  : "bg-black/40 text-white/50 hover:text-white/80",
+                  : "bg-black/50 text-white/50 hover:text-white/80",
               )}
-              style={{ zIndex: 3 }}
+              style={{ zIndex: 4 }}
             >
               <BarChart2 className="w-3.5 h-3.5" />
             </button>
