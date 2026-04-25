@@ -118,9 +118,8 @@ function ProgressBar({
 // ── Download button — uses Radix Popover so it nests correctly inside Dialog ──
 
 const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
-  { type: "audio",  icon: "🎵", label: "Audio only (MP3)"              },
-  { type: "video",  icon: "🎬", label: "Video only (MP4)"              },
-  { type: "merged", icon: "📦", label: "Merged (MP4 + audio combined)" },
+  { type: "audio",  icon: "🎵", label: "Audio only (MP3)"       },
+  { type: "merged", icon: "🎬", label: "Video + Audio (MP4)"    },
 ];
 
 function DownloadButton({
@@ -368,8 +367,10 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       const blob           = new Blob([mergedBytes], { type: "video/mp4" });
       const file           = new File([blob], mergedFilename, { type: "video/mp4" });
 
-      if (videosDir && api?.writeFile) {
-        await api.writeFile(`${videosDir}/${mergedFilename}`, mergedBytes);
+      // Prefer the Downloads folder; fall back to the Videos folder.
+      const saveDir = downloadsDir || videosDir;
+      if (saveDir && api?.writeFile) {
+        await api.writeFile(`${saveDir}/${mergedFilename}`, mergedBytes);
       }
 
       await addFiles([file]);
@@ -379,10 +380,10 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       const mergedTrackId = `${file.name}-${file.size}`;
       try {
         localStorage.setItem(`merged-video-trackid:${mergedTrackId}`, "1");
-        if (videosDir) {
+        if (saveDir) {
           localStorage.setItem(
             `merged-video-path:${mergedTrackId}`,
-            `${videosDir}/${mergedFilename}`,
+            `${saveDir}/${mergedFilename}`,
           );
         }
       } catch {}
@@ -399,7 +400,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         artist:       result.author,
         ext:          "mp4",
         fileSize:     mergedBytes.byteLength,
-        filePath:     videosDir ? `${videosDir}/${mergedFilename}` : null,
+        filePath:     saveDir ? `${saveDir}/${mergedFilename}` : null,
         downloadedAt: Date.now(),
         type:         "video",
       });
@@ -524,10 +525,9 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
   // ── Derived success message ───────────────────────────────────────────────
   function successMessage(): string {
-    if (dlType === "audio")  return "✅ Audio downloaded";
-    if (dlType === "video")  return "✅ Video downloaded";
-    if (dlType === "merged") return mergeDone ? "✅ Merged MP4 saved" : "⚠️ Merge failed";
-    return "";
+    if (dlType === "audio")  return "✅ Audio (MP3) downloaded";
+    if (dlType === "merged") return mergeDone ? "✅ Video + Audio MP4 saved" : "⚠️ Merge failed";
+    return "✅ Downloaded";
   }
 
   // ── Derived flags ────────────────────────────────────────────────────────
@@ -585,15 +585,15 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
             <div className="space-y-3">
               {(dlType === "audio" || dlType === "merged") && (
                 <ProgressBar
-                  label={dlType === "merged" ? "Downloading audio..." : "MP3 Audio"}
+                  label={dlType === "merged" ? "Downloading audio stream…" : "MP3 Audio"}
                   percent={progressAudio}
                   done={audioDone}
                   error={audioError}
                 />
               )}
-              {(dlType === "video" || dlType === "merged") && (
+              {dlType === "merged" && (
                 <ProgressBar
-                  label={dlType === "merged" ? "Downloading video..." : "MP4 Video"}
+                  label="Downloading video stream…"
                   percent={progressVideo}
                   done={videoDone}
                   error={videoError}
@@ -601,7 +601,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
               )}
               {dlType === "merged" && (
                 <ProgressBar
-                  label={mergeDone ? "✅ Done!" : "Merging files..."}
+                  label={mergeDone ? "Saved!" : "Merging into MP4…"}
                   percent={progressMerge}
                   done={mergeDone}
                   error={mergeError}
