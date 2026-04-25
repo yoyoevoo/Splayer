@@ -1,5 +1,15 @@
 export {};
 
+interface YtSearchResult {
+  videoId: string;
+  url: string;
+  title: string;
+  channelName: string;
+  durationSecs: number;
+  durationText: string;
+  thumbnail: string;
+}
+
 interface YtVideoInfo {
   title: string;
   author: string;
@@ -24,6 +34,9 @@ declare global {
         filePath: string,
         bytes: Uint8Array,
       ) => Promise<{ success: boolean; error?: string }>;
+
+      /** Search YouTube for videos matching a query. */
+      ytSearch: (query: string) => Promise<YtSearchResult[] | { error: string }>;
 
       /** Fetch YouTube video metadata without downloading. */
       ytGetInfo: (url: string) => Promise<YtVideoInfo | { error: string }>;

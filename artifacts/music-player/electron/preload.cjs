@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   writeFile: (filePath, bytes) =>
     ipcRenderer.invoke("write-file", { filePath, bytes }),
 
+  /** Search YouTube and return a list of video results. */
+  ytSearch: (query) => ipcRenderer.invoke("yt-search", query),
+
   /** Fetch YouTube video metadata (title, author, duration, thumbnail). */
   ytGetInfo: (url) => ipcRenderer.invoke("yt-get-info", url),
 

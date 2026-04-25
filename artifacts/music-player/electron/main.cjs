@@ -48,6 +48,25 @@ ipcMain.handle("write-file", async (_event, { filePath, bytes }) => {
   }
 });
 
+// ── IPC: YouTube — search videos ─────────────────────────────────────────────
+ipcMain.handle("yt-search", async (_event, query) => {
+  try {
+    const yts = require("yt-search");
+    const r = await yts(query.trim());
+    return r.videos.slice(0, 8).map((v) => ({
+      videoId:     v.videoId,
+      url:         v.url,
+      title:       v.title,
+      channelName: v.author ? v.author.name : "Unknown",
+      durationSecs: v.seconds || 0,
+      durationText: v.timestamp || "0:00",
+      thumbnail:   v.thumbnail || v.image || "",
+    }));
+  } catch (err) {
+    return { error: String(err.message ?? err) };
+  }
+});
+
 // ── IPC: YouTube — fetch video info ─────────────────────────────────────────
 ipcMain.handle("yt-get-info", async (_event, url) => {
   try {

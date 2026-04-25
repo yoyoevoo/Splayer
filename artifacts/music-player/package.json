@@ -112,6 +112,7 @@
     "@distube/ytdl-core": "^4.16.12",
     "browser-id3-writer": "^6.3.1",
     "idb": "^8.0.3",
-    "jsmediatags": "^3.9.7"
+    "jsmediatags": "^3.9.7",
+    "yt-search": "^2.13.1"
   }
 }
