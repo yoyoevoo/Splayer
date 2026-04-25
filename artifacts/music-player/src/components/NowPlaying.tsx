@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart2, Film, ImagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,31 @@ function writeVizPref(v: boolean) {
 }
 
 export function NowPlaying() {
-  const { currentTrack, tracks, setCustomCover, lyricsOpen, setLyricsOpen } = usePlayer();
-  const coverInputRef = useRef<HTMLInputElement>(null);
-  const [editOpen,      setEditOpen]      = useState(false);
-  const [vizEnabled,    setVizEnabled]    = useState(readVizPref);
-  const [videoOpen,     setVideoOpen]     = useState(false);
-  const [noVideoTip,    setNoVideoTip]    = useState(false);
+  const {
+    currentTrack,
+    tracks,
+    setCustomCover,
+    lyricsOpen,
+    setLyricsOpen,
+    isPlaying,
+    currentTime,
+  } = usePlayer();
+
+  const coverInputRef  = useRef<HTMLInputElement>(null);
+  const videoRef       = useRef<HTMLVideoElement>(null);
+
+  const [editOpen,   setEditOpen]   = useState(false);
+  const [vizEnabled, setVizEnabled] = useState(readVizPref);
+
+  // ── Floating video panel (pre-existing) ──────────────────────────────
+  const [videoOpen,  setVideoOpen]  = useState(false);
+  const [noVideoTip, setNoVideoTip] = useState(false);
   const noVideoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Inline A/V toggle (new) ───────────────────────────────────────────
+  const [videoMode,  setVideoMode]  = useState(false);
+  const [noAvTip,    setNoAvTip]    = useState(false);
+  const noAvTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleViz = () => {
     const next = !vizEnabled;
@@ -34,25 +52,52 @@ export function NowPlaying() {
     writeVizPref(next);
   };
 
-  // Find a companion MP4 track that shares the same base filename as the current track
-  const matchingVideoTrack = currentTrack
-    ? (() => {
-        const base = currentTrack.file.name.replace(/\.[^.]+$/, "").toLowerCase();
-        return tracks.find(
-          (t) =>
-            t.id !== currentTrack.id &&
-            t.file.name.toLowerCase() === base + ".mp4",
-        ) ?? null;
-      })()
-    : null;
+  // Find a companion MP4 track (memoised so effects don't re-run every render)
+  const matchingVideoTrack = useMemo(() => {
+    if (!currentTrack) return null;
+    const base = currentTrack.file.name.replace(/\.[^.]+$/, "").toLowerCase();
+    return (
+      tracks.find(
+        (t) =>
+          t.id !== currentTrack.id &&
+          t.file.name.toLowerCase() === base + ".mp4",
+      ) ?? null
+    );
+  }, [currentTrack, tracks]);
 
   const hasVideo = matchingVideoTrack !== null;
 
-  // Close video panel whenever the current track changes and there's no match
+  // ── Auto-off: floating panel ─────────────────────────────────────────
   useEffect(() => {
     if (!hasVideo) setVideoOpen(false);
   }, [hasVideo]);
 
+  // ── Auto-off: inline video mode ───────────────────────────────────────
+  useEffect(() => {
+    if (!hasVideo) setVideoMode(false);
+  }, [hasVideo]);
+
+  // ── Sync inline video play / pause ────────────────────────────────────
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !videoMode || !matchingVideoTrack) return;
+    if (isPlaying) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
+    }
+  }, [isPlaying, videoMode, matchingVideoTrack]);
+
+  // ── Sync inline video seek position (only correct large drifts) ───────
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !videoMode || !matchingVideoTrack) return;
+    if (Math.abs(v.currentTime - currentTime) > 0.75) {
+      v.currentTime = currentTime;
+    }
+  }, [currentTime, videoMode, matchingVideoTrack]);
+
+  // ── Floating video button click ───────────────────────────────────────
   const onVideoButtonClick = () => {
     if (hasVideo) {
       setVideoOpen((o) => !o);
@@ -63,8 +108,21 @@ export function NowPlaying() {
     }
   };
 
+  // ── A/V toggle button click ───────────────────────────────────────────
+  const onAvToggle = () => {
+    if (hasVideo) {
+      setVideoMode((m) => !m);
+    } else {
+      if (noAvTimer.current) clearTimeout(noAvTimer.current);
+      setNoAvTip(true);
+      noAvTimer.current = setTimeout(() => setNoAvTip(false), 2000);
+    }
+  };
+
+  // Cleanup timers on unmount
   useEffect(() => () => {
     if (noVideoTimer.current) clearTimeout(noVideoTimer.current);
+    if (noAvTimer.current)    clearTimeout(noAvTimer.current);
   }, []);
 
   if (!currentTrack) {
@@ -137,40 +195,57 @@ export function NowPlaying() {
           {/*
            * Stacking order inside this container (all use the same parent
            * stacking context established by position:relative):
-           *   z:1  album art
+           *   z:1  album art / inline video
            *   z:2  visualizer canvas  ← on TOP, bars visible over the art
            *   z:3  change-cover overlay
-           *   z:4  visualizer toggle button
+           *   z:4  corner buttons (visualizer, floating film, A/V toggle)
            */}
           <div className="relative w-full max-w-sm group">
 
-            {/* z:1 — album art */}
+            {/* z:1 — album art OR inline video */}
             <div style={{ position: "relative", zIndex: 1 }}>
-              <AlbumCover
-                src={cover}
-                seed={currentTrack.title + currentTrack.artist}
-                size="xl"
-                className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
-              />
+              {videoMode && matchingVideoTrack ? (
+                /* Inline video — same square footprint as the album art */
+                <div className="w-full aspect-square rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]">
+                  <video
+                    ref={videoRef}
+                    key={matchingVideoTrack.id}
+                    src={matchingVideoTrack.url}
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    style={{ display: "block" }}
+                  />
+                </div>
+              ) : (
+                <AlbumCover
+                  src={cover}
+                  seed={currentTrack.title + currentTrack.artist}
+                  size="xl"
+                  className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
+                />
+              )}
             </div>
 
-            {/* z:2 — visualizer canvas (absolute inset-0, set inside component) */}
-            <Visualizer visible={vizEnabled} />
+            {/* z:2 — visualizer canvas (hidden in video mode so it doesn't overlay) */}
+            {!videoMode && <Visualizer visible={vizEnabled} />}
 
-            {/* z:3 — change-cover hover overlay */}
-            <button
-              onClick={onPickCover}
-              className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ zIndex: 3 }}
-              data-testid="button-change-cover"
-            >
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur text-white text-sm">
-                <ImagePlus className="w-4 h-4" />
-                Change cover
-              </div>
-            </button>
+            {/* z:3 — change-cover hover overlay (hidden in video mode) */}
+            {!videoMode && (
+              <button
+                onClick={onPickCover}
+                className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ zIndex: 3 }}
+                data-testid="button-change-cover"
+              >
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur text-white text-sm">
+                  <ImagePlus className="w-4 h-4" />
+                  Change cover
+                </div>
+              </button>
+            )}
 
-            {/* z:4 — visualizer toggle (top-left corner) */}
+            {/* z:4 — visualizer toggle (top-left, slot 1) */}
             <button
               onClick={toggleViz}
               title={vizEnabled ? "Hide visualizer" : "Show visualizer"}
@@ -187,11 +262,11 @@ export function NowPlaying() {
               <BarChart2 className="w-3.5 h-3.5" />
             </button>
 
-            {/* z:4 — video player button (top-left, next to visualizer toggle) */}
+            {/* z:4 — floating video panel button (top-left, slot 2) */}
             <div className="absolute top-2" style={{ left: 40, zIndex: 4 }}>
               <button
                 onClick={onVideoButtonClick}
-                title={hasVideo ? (videoOpen ? "Close video" : "Play video") : "No video file found"}
+                title={hasVideo ? (videoOpen ? "Close video panel" : "Open video panel") : "No video file found"}
                 className={cn(
                   "flex items-center justify-center",
                   "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
@@ -213,6 +288,42 @@ export function NowPlaying() {
                   style={{ background: "rgba(0,0,0,0.85)", color: "#fff", zIndex: 10 }}
                 >
                   No video file found
+                </div>
+              )}
+            </div>
+
+            {/* z:4 — Audio/Video inline toggle button (top-left, slot 3) */}
+            <div className="absolute top-2" style={{ left: 72, zIndex: 4 }}>
+              <button
+                onClick={onAvToggle}
+                title={
+                  videoMode
+                    ? "Switch to Audio mode"
+                    : hasVideo
+                      ? "Switch to Video mode"
+                      : "No video available for this song"
+                }
+                className={cn(
+                  "flex items-center justify-center",
+                  "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
+                  "text-[13px] leading-none transition-all duration-200",
+                  videoMode
+                    ? "bg-blue-500/80 text-white"
+                    : hasVideo
+                      ? "bg-black/50 text-white/80 hover:bg-black/70 hover:text-white"
+                      : "bg-black/30 text-white/25 cursor-default",
+                )}
+              >
+                {videoMode ? "🎬" : "🎵"}
+              </button>
+
+              {/* "No video available" tooltip */}
+              {noAvTip && (
+                <div
+                  className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium shadow-lg"
+                  style={{ background: "rgba(0,0,0,0.85)", color: "#fff", zIndex: 10 }}
+                >
+                  No video available for this song
                 </div>
               )}
             </div>
@@ -250,7 +361,7 @@ export function NowPlaying() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Floating video player */}
+      {/* Floating video player (pre-existing) */}
       {videoOpen && matchingVideoTrack && (
         <FloatingVideoPlayer
           videoUrl={matchingVideoTrack.url}
