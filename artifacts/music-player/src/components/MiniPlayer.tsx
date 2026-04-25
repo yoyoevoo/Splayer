@@ -7,21 +7,17 @@
  *
  * Extras:
  *   • Draggable anywhere inside the viewport (position saved to localStorage)
- *   • Hover reveals a volume slider above the card
  *   • Smooth spring-driven enter/exit via Framer Motion
  */
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Maximize2,
   Pause,
   Play,
   SkipBack,
   SkipForward,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
@@ -56,19 +52,14 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
     isPlaying,
     currentTime,
     duration,
-    volume,
-    muted,
     togglePlay,
     next,
     prev,
     seek,
-    setVolume,
-    toggleMute,
   } = usePlayer();
 
   const [pos,      setPos]      = useState<{ x: number; y: number }>(loadPos);
   const [dragging, setDragging] = useState(false);
-  const [hovered,  setHovered]  = useState(false);
 
   const posRef      = useRef(pos);
   posRef.current    = pos;
@@ -134,44 +125,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         userSelect: "none",
       }}
       onMouseDown={onMouseDown}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
-      {/* ── Volume tooltip (hover) ─────────────────────────────────────── */}
-      <AnimatePresence>
-        {hovered && (
-          <motion.div
-            key="vol"
-            initial={{ opacity: 0, y: 6   }}
-            animate={{ opacity: 1, y: 0   }}
-            exit={{    opacity: 0, y: 6   }}
-            transition={{ duration: 0.14 }}
-            className="mb-2 px-3 py-2 rounded-2xl border border-card-border/60 bg-card/95 backdrop-blur-md shadow-xl flex items-center gap-2"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={toggleMute}
-              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Toggle mute"
-            >
-              {muted || volume === 0
-                ? <VolumeX className="w-3.5 h-3.5" />
-                : <Volume2 className="w-3.5 h-3.5" />}
-            </button>
-            <Slider
-              value={[muted ? 0 : volume * 100]}
-              max={100}
-              step={1}
-              onValueChange={(v) => setVolume(v[0] / 100)}
-              className="flex-1"
-            />
-            <span className="text-[10px] text-muted-foreground tabular-nums w-6 text-right shrink-0">
-              {muted ? 0 : Math.round(volume * 100)}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* ── Main card ─────────────────────────────────────────────────── */}
       <div className="relative rounded-2xl border border-card-border/60 bg-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
 
