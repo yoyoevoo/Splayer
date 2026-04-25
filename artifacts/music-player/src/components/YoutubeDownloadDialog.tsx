@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePlayer } from "@/lib/player-context";
+import { addDownloadRecord } from "@/lib/downloads-history";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -307,6 +308,12 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     setAudioError(false);
     setVideoError(false);
 
+    // Shared base filename — same stem for both audio and video so the player
+    // can auto-match the companion file (NowPlaying looks for stem + ".mp4").
+    const baseName     = sanitizeFilename(info.title);
+    const downloadsDir = localStorage.getItem("settings-downloads-path") ?? "";
+    const videosDir    = localStorage.getItem("settings-videos-path")    ?? "";
+
     const doAudio = type === "audio" || type === "both";
     const doVideo = type === "video" || type === "both";
 
@@ -339,17 +346,37 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       } else {
         setAudioDone(true);
         setProgressAudio(100);
-        const safe     = sanitizeFilename(audioResult.title);
-        const filename = `${safe}.${audioResult.ext}`;
-        // Copy into a fresh Uint8Array so TypeScript is happy and we're guaranteed
-        // an owned ArrayBuffer (not a Node pool slice).
-        const blob     = new Blob([new Uint8Array(audioResult.bytes)], { type: audioResult.mimeType });
-        const file     = new File([blob], filename, { type: audioResult.mimeType });
+
+        const audioFilename = `${baseName}.${audioResult.ext}`;
+        const audioBytes    = new Uint8Array(audioResult.bytes);
+        const blob          = new Blob([audioBytes], { type: audioResult.mimeType });
+        const file          = new File([blob], audioFilename, { type: audioResult.mimeType });
+
+        // Save to the configured Downloads folder on disk
+        if (downloadsDir && api?.writeFile) {
+          await api.writeFile(`${downloadsDir}/${audioFilename}`, audioBytes);
+        }
+
+        // Add to the in-app library so it appears in the song list immediately
         await addFiles([file]);
         await updateTrackInfo(file.name + "-" + file.size, {
           title:  audioResult.title,
           artist: audioResult.author,
         });
+
+        // Record in download history
+        addDownloadRecord({
+          id:           `audio-${Date.now()}`,
+          trackId:      `${file.name}-${file.size}`,
+          title:        audioResult.title,
+          artist:       audioResult.author,
+          ext:          audioResult.ext,
+          fileSize:     audioBytes.byteLength,
+          filePath:     downloadsDir ? `${downloadsDir}/${audioFilename}` : null,
+          downloadedAt: Date.now(),
+          type:         "audio",
+        });
+
         anySuccess = true;
       }
     }
@@ -360,15 +387,40 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       } else {
         setVideoDone(true);
         setProgressVideo(100);
-        const safe     = sanitizeFilename(videoResult.title);
-        const filename = `${safe}.${videoResult.ext}`;
-        const blob     = new Blob([new Uint8Array(videoResult.bytes)], { type: videoResult.mimeType });
-        const file     = new File([blob], filename, { type: videoResult.mimeType });
+
+        // Always save video as .mp4 — same base name as the audio file so the
+        // player's companion-video matching (stem + ".mp4") works automatically.
+        const videoFilename = `${baseName}.mp4`;
+        const videoBytes    = new Uint8Array(videoResult.bytes);
+        const blob          = new Blob([videoBytes], { type: "video/mp4" });
+        const file          = new File([blob], videoFilename, { type: "video/mp4" });
+
+        // Save to the configured Videos folder on disk
+        if (videosDir && api?.writeFile) {
+          await api.writeFile(`${videosDir}/${videoFilename}`, videoBytes);
+        }
+
+        // Add to the library — this is what lets NowPlaying find the matching
+        // video track by filename when the audio track is playing.
         await addFiles([file]);
         await updateTrackInfo(file.name + "-" + file.size, {
           title:  videoResult.title,
           artist: videoResult.author,
         });
+
+        // Record in download history
+        addDownloadRecord({
+          id:           `video-${Date.now()}`,
+          trackId:      `${file.name}-${file.size}`,
+          title:        videoResult.title,
+          artist:       videoResult.author,
+          ext:          "mp4",
+          fileSize:     videoBytes.byteLength,
+          filePath:     videosDir ? `${videosDir}/${videoFilename}` : null,
+          downloadedAt: Date.now(),
+          type:         "video",
+        });
+
         anySuccess = true;
       }
     }

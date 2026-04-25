@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { FolderOpen, Settings } from "lucide-react";
+import { Download, FolderOpen, Settings } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DownloadsView } from "@/components/DownloadsView";
 import { cn } from "@/lib/utils";
 
 // ── localStorage keys ────────────────────────────────────────────────────────
@@ -110,12 +111,16 @@ function FolderRow({ label, description, lsKey }: FolderRowProps) {
 
 // ── SettingsDialog ────────────────────────────────────────────────────────────
 
+type Tab = "folders" | "downloads";
+
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }
 
 export function SettingsDialog({ open, onOpenChange }: Props) {
+  const [tab, setTab] = useState<Tab>("folders");
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -126,40 +131,70 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-1">
-
-          {/* ── Section: File Locations ── */}
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
-              File Locations
-            </p>
-
-            <div className="space-y-5">
-              <FolderRow
-                label="Music Library Folder"
-                description="The folder where your local music files live."
-                lsKey={LS.musicLibrary}
-              />
-
-              <hr className="border-card-border" />
-
-              <FolderRow
-                label="Downloads Folder"
-                description="Where downloaded YouTube audio files (MP3) are saved."
-                lsKey={LS.downloads}
-              />
-
-              <hr className="border-card-border" />
-
-              <FolderRow
-                label="Videos Folder"
-                description="Where downloaded YouTube video files (MP4) are saved."
-                lsKey={LS.videos}
-              />
-            </div>
-          </div>
-
+        {/* ── Tab switcher ── */}
+        <div className="flex rounded-lg border border-card-border overflow-hidden text-sm -mt-1">
+          <button
+            onClick={() => setTab("folders")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              tab === "folders"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            Folders
+          </button>
+          <button
+            onClick={() => setTab("downloads")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              tab === "downloads"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Download className="w-3.5 h-3.5" />
+            Downloads
+          </button>
         </div>
+
+        {/* ── Folders tab ── */}
+        {tab === "folders" && (
+          <div className="space-y-5 py-1">
+            <FolderRow
+              label="Music Library Folder"
+              description="The folder where your local music files live."
+              lsKey={LS.musicLibrary}
+            />
+
+            <hr className="border-card-border" />
+
+            <FolderRow
+              label="Downloads Folder"
+              description="Where downloaded YouTube audio files are saved to disk."
+              lsKey={LS.downloads}
+            />
+
+            <hr className="border-card-border" />
+
+            <FolderRow
+              label="Videos Folder"
+              description="Where downloaded YouTube video files (MP4) are saved to disk."
+              lsKey={LS.videos}
+            />
+          </div>
+        )}
+
+        {/* ── Downloads tab ── */}
+        {tab === "downloads" && (
+          <div className="py-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Download History
+            </p>
+            <DownloadsView />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
