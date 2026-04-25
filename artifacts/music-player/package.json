@@ -109,6 +109,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "browser-id3-writer": "^6.3.1",
     "idb": "^8.0.3",
     "jsmediatags": "^3.9.7"

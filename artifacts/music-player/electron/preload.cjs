@@ -8,4 +8,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Write bytes to an absolute file path on disk. */
   writeFile: (filePath, bytes) =>
     ipcRenderer.invoke("write-file", { filePath, bytes }),
+
+  /** Fetch YouTube video metadata (title, author, duration, thumbnail). */
+  ytGetInfo: (url) => ipcRenderer.invoke("yt-get-info", url),
+
+  /** Download audio from a YouTube URL. Returns bytes + metadata. */
+  ytDownload: (url) => ipcRenderer.invoke("yt-download", url),
+
+  /**
+   * Subscribe to download progress events.
+   * Returns an unsubscribe function — call it when done.
+   */
+  onYtProgress: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("yt-progress", handler);
+    return () => ipcRenderer.removeListener("yt-progress", handler);
+  },
 });

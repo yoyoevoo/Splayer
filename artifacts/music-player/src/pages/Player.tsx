@@ -9,6 +9,7 @@ import {
   Music,
   Palette,
   Upload,
+  Youtube,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { AppearanceDialog } from "@/components/AppearanceDialog";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { HomeDashboard } from "@/components/HomeDashboard";
+import { YoutubeDownloadDialog } from "@/components/YoutubeDownloadDialog";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Player() {
@@ -42,6 +44,7 @@ export default function Player() {
 
   const [shortcutsOpen,   setShortcutsOpen]   = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [ytOpen,        setYtOpen]        = useState(false);
   const [miniMode,      setMiniMode]      = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
   const dragCounter = useRef(0);
@@ -166,6 +169,10 @@ export default function Player() {
                 <FolderOpen className="w-4 h-4 mr-2" />
                 Add folder...
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setYtOpen(true)}>
+                <Youtube className="w-4 h-4 mr-2 text-red-500" />
+                From YouTube...
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -241,6 +248,7 @@ export default function Player() {
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <AppearanceDialog open={appearanceOpen} onOpenChange={setAppearanceOpen} />
+      <YoutubeDownloadDialog open={ytOpen} onOpenChange={setYtOpen} />
 
       <input ref={fileRef} type="file"
         accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
