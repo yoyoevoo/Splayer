@@ -1,12 +1,11 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart2, Images, Pencil } from "lucide-react";
+import { BarChart2, ImagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
-import { SetArtworkDialog } from "./SetArtworkDialog";
 import { Visualizer } from "./Visualizer";
 import { cn } from "@/lib/utils";
 
@@ -21,9 +20,8 @@ function writeVizPref(v: boolean) {
 export function NowPlaying() {
   const { currentTrack, setCustomCover } = usePlayer();
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const [editOpen,     setEditOpen]     = useState(false);
-  const [artworkOpen,  setArtworkOpen]  = useState(false);
-  const [vizEnabled,   setVizEnabled]   = useState(readVizPref);
+  const [editOpen,   setEditOpen]   = useState(false);
+  const [vizEnabled, setVizEnabled] = useState(readVizPref);
 
   const toggleViz = () => {
     const next = !vizEnabled;
@@ -121,16 +119,16 @@ export function NowPlaying() {
             {/* z:2 — visualizer canvas (absolute inset-0, set inside component) */}
             <Visualizer visible={vizEnabled} />
 
-            {/* z:3 — set-artwork hover overlay (click to choose upload/fetch) */}
+            {/* z:3 — change-cover hover overlay */}
             <button
-              onClick={() => setArtworkOpen(true)}
+              onClick={onPickCover}
               className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
               style={{ zIndex: 3 }}
               data-testid="button-change-cover"
             >
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur text-white text-sm">
-                <Images className="w-4 h-4" />
-                Set artwork
+                <ImagePlus className="w-4 h-4" />
+                Change cover
               </div>
             </button>
 
@@ -191,11 +189,6 @@ export function NowPlaying() {
       <EditTrackDialog
         open={editOpen}
         onOpenChange={setEditOpen}
-        track={currentTrack}
-      />
-      <SetArtworkDialog
-        open={artworkOpen}
-        onOpenChange={setArtworkOpen}
         track={currentTrack}
       />
     </div>

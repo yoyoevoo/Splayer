@@ -5,8 +5,6 @@ import {
   FileMusic,
   FolderOpen,
   Heart,
-  Image,
-  ImageDown,
   ImagePlus,
   ListMusic,
   Music,
@@ -40,9 +38,7 @@ import { cn } from "@/lib/utils";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { BulkTagEditor } from "./BulkTagEditor";
-import { ArtworkFetcher } from "./ArtworkFetcher";
 import { DuplicateFinder } from "./DuplicateFinder";
-import { SetArtworkDialog } from "./SetArtworkDialog";
 import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
@@ -137,10 +133,7 @@ function LibraryView() {
   const [editTrack, setEditTrack] = useState<Track | null>(null);
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
-  const [artFetcherOpen, setArtFetcherOpen] = useState(false);
   const [dupFinderOpen, setDupFinderOpen] = useState(false);
-  const [setArtTrack, setSetArtTrack] = useState<Track | null>(null);
-  const missingArtCount = tracks.filter((t) => !trackCoverUrl(t)).length;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -201,22 +194,6 @@ function LibraryView() {
             >
               <ScanSearch className="w-3.5 h-3.5" />
               <span className="sr-only">Find Duplicates</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="gap-1.5 relative"
-              onClick={() => setArtFetcherOpen(true)}
-              title="Fetch Missing Artwork"
-              data-testid="button-fetch-artwork"
-            >
-              <ImageDown className="w-3.5 h-3.5" />
-              {missingArtCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-[14px] text-center tabular-nums">
-                  {missingArtCount}
-                </span>
-              )}
-              <span className="sr-only">Fetch Missing Artwork</span>
             </Button>
             <Button
               size="sm"
@@ -306,8 +283,6 @@ function LibraryView() {
                         src={trackCoverUrl(t)}
                         seed={t.title + t.artist}
                         size="sm"
-                        showFetchBadge={!trackCoverUrl(t)}
-                        onFetchBadgeClick={() => setArtFetcherOpen(true)}
                       />
                       {isActive && (
                         <div className="absolute inset-0 rounded-lg bg-black/50 flex items-center justify-center">
@@ -334,19 +309,6 @@ function LibraryView() {
                         {t.artist}
                       </div>
                     </div>
-                    {/* Hover: Set Artwork icon */}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSetArtTrack(t);
-                      }}
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-primary"
-                      title="Set artwork"
-                    >
-                      <Image className="w-3.5 h-3.5" />
-                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -389,15 +351,6 @@ function LibraryView() {
                           onCreate={() => setNewPlaylistFor(t.id)}
                         />
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSetArtTrack(t);
-                          }}
-                        >
-                          <Image className="w-4 h-4 mr-2" />
-                          Set artwork
-                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
@@ -474,21 +427,10 @@ function LibraryView() {
         open={bulkEditorOpen}
         onOpenChange={setBulkEditorOpen}
       />
-      <ArtworkFetcher
-        open={artFetcherOpen}
-        onOpenChange={setArtFetcherOpen}
-      />
       <DuplicateFinder
         open={dupFinderOpen}
         onOpenChange={setDupFinderOpen}
       />
-      {setArtTrack && (
-        <SetArtworkDialog
-          open={setArtTrack !== null}
-          onOpenChange={(o) => { if (!o) setSetArtTrack(null); }}
-          track={setArtTrack}
-        />
-      )}
       <NewPlaylistDialog
         open={newPlaylistFor !== null}
         onOpenChange={(o) => {
