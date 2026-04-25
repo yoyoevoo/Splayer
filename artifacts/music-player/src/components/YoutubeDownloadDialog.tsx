@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import ReactDOM from "react-dom";
 import {
   Download,
   Loader2,
@@ -14,6 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePlayer } from "@/lib/player-context";
@@ -110,7 +114,7 @@ function ProgressBar({
   );
 }
 
-// ── Download option popup (portal — never clipped by overflow containers) ────
+// ── Download button — uses Radix Popover so it nests correctly inside Dialog ──
 
 const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
   { type: "audio", icon: "🎵", label: "Audio only (MP3)" },
@@ -118,103 +122,52 @@ const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
   { type: "both",  icon: "📦", label: "Both (MP3 + MP4)" },
 ];
 
-function DownloadMenuPortal({
-  anchorRect,
-  onPick,
-  onClose,
-}: {
-  anchorRect: DOMRect;
-  onPick: (t: DownloadType) => void;
-  onClose: () => void;
-}) {
-  // Position the menu just above the anchor button, pinned to right edge.
-  // Fixed-coordinate portal so it's never clipped by overflow: auto parents.
-  const style: React.CSSProperties = {
-    position:  "fixed",
-    zIndex:    9999,
-    bottom:    window.innerHeight - anchorRect.top + 6,
-    right:     window.innerWidth  - anchorRect.right,
-    minWidth:  176, // w-44
-  };
-
-  return ReactDOM.createPortal(
-    <>
-      {/* Transparent overlay catches outside clicks */}
-      <div
-        className="fixed inset-0"
-        style={{ zIndex: 9998 }}
-        onMouseDown={onClose}
-      />
-      <div
-        style={style}
-        className="rounded-xl border border-card-border bg-card shadow-xl overflow-hidden"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {MENU_OPTIONS.map(({ type, icon, label }) => (
-          <button
-            key={type}
-            onClick={() => { onPick(type); onClose(); }}
-            className={cn(
-              "w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium",
-              "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
-            )}
-          >
-            <span className="text-sm">{icon}</span>
-            {label}
-          </button>
-        ))}
-      </div>
-    </>,
-    document.body,
-  );
-}
-
-// ── Download button (module-level so React never remounts it mid-interaction) ─
-
-interface DownloadButtonProps {
-  id:                 string;
-  onPick:             (t: DownloadType) => void;
-  downloadingId:      string | null;
-  downloadMenuFor:    { id: string; rect: DOMRect } | null;
-  setDownloadMenuFor: (v: { id: string; rect: DOMRect } | null) => void;
-}
-
 function DownloadButton({
   id,
   onPick,
   downloadingId,
-  downloadMenuFor,
-  setDownloadMenuFor,
-}: DownloadButtonProps) {
-  const isOpen = downloadMenuFor?.id === id;
-
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (isOpen) {
-      setDownloadMenuFor(null);
-    } else {
-      setDownloadMenuFor({ id, rect: e.currentTarget.getBoundingClientRect() });
-    }
-  };
+}: {
+  id:            string;
+  onPick:        (t: DownloadType) => void;
+  downloadingId: string | null;
+}) {
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="shrink-0">
-      {isOpen && downloadMenuFor && (
-        <DownloadMenuPortal
-          anchorRect={downloadMenuFor.rect}
-          onPick={onPick}
-          onClose={() => setDownloadMenuFor(null)}
-        />
-      )}
-      <Button
-        size="sm"
-        variant={isOpen ? "default" : "outline"}
-        className="gap-1.5 text-xs"
-        disabled={downloadingId === id}
-        onClick={handleClick}
-      >
-        <Download className="h-3 w-3" />
-        Download
-      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            size="sm"
+            variant={open ? "default" : "outline"}
+            className="gap-1.5 text-xs"
+            disabled={downloadingId === id}
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          className="w-44 p-1"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          {MENU_OPTIONS.map(({ type, icon, label }) => (
+            <button
+              key={type}
+              onClick={() => { setOpen(false); onPick(type); }}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-xs font-medium",
+                "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
+              )}
+            >
+              <span className="text-sm">{icon}</span>
+              {label}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -242,10 +195,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   // URL-mode state
   const [url,     setUrl]     = useState("");
   const [urlInfo, setUrlInfo] = useState<VideoInfo | null>(null);
-
-  // Download-menu state: stores the triggering button's id + its bounding rect.
-  // Using parent state (not child state) avoids inner-component hook pitfalls.
-  const [downloadMenuFor, setDownloadMenuFor] = useState<{ id: string; rect: DOMRect } | null>(null);
 
   // Shared download state
   const [downloadInfo,   setDownloadInfo]   = useState<VideoInfo | null>(null);
@@ -285,7 +234,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       setUrl("");
       setUrlInfo(null);
       setDownloadInfo(null);
-      setDownloadMenuFor(null);
       setDlType("both");
       setProgressAudio(0);
       setProgressVideo(0);
@@ -358,7 +306,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     setVideoDone(false);
     setAudioError(false);
     setVideoError(false);
-    setDownloadMenuFor(null);
 
     const doAudio = type === "audio" || type === "both";
     const doVideo = type === "video" || type === "both";
@@ -456,15 +403,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-lg"
-        onInteractOutside={(e) => {
-          // Prevent Radix from closing the dialog on mousedown when our portal
-          // menu is open — the menu item's click fires AFTER mousedown, so without
-          // this the dialog closes before the download can start.
-          if (downloadMenuFor) e.preventDefault();
-        }}
-      >
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Youtube className="w-4 h-4 text-red-500" />
@@ -560,7 +499,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                     setSearchResults([]);
                     setUrlInfo(null);
                     setPreviewId(null);
-                    setDownloadMenuFor(null);
                   }}
                   className={cn(
                     "flex-1 py-1.5 font-medium transition-colors",
@@ -702,8 +640,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                           <DownloadButton
                             id={r.videoId}
                             downloadingId={downloadingId}
-                            downloadMenuFor={downloadMenuFor}
-                            setDownloadMenuFor={setDownloadMenuFor}
                             onPick={(type) => {
                               setDownloadingId(r.videoId);
                               performDownload(r.url, {
@@ -839,8 +775,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                     <DownloadButton
                       id="url"
                       downloadingId={downloadingId}
-                      downloadMenuFor={downloadMenuFor}
-                      setDownloadMenuFor={setDownloadMenuFor}
                       onPick={(type) =>
                         performDownload(url.trim(), urlInfo!, type)
                       }
