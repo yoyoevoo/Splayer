@@ -21,12 +21,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Download video (MP4) from a YouTube URL. Returns bytes + metadata. */
   ytDownloadVideo: (url) => ipcRenderer.invoke("yt-download-video", url),
 
-  /** Fetch available video quality options for a YouTube URL. */
-  ytGetQualities: (url) => ipcRenderer.invoke("yt-get-qualities", url),
-
   /** Download audio + video then merge into a single MP4 via ffmpeg. */
-  ytDownloadMerged: ({ url, videoFormatId }) =>
-    ipcRenderer.invoke("yt-download-merged", { url, videoFormatId }),
+  ytDownloadMerged: (url) => ipcRenderer.invoke("yt-download-merged", url),
 
   /** Delete a file from disk by its absolute path. */
   deleteFile: (filePath) => ipcRenderer.invoke("delete-file", filePath),

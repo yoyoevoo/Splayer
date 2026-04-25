@@ -249,73 +249,6 @@ function parseYtDlpProgress(line) {
   return m ? Math.round(parseFloat(m[1])) : null;
 }
 
-// ── IPC: YouTube — get available video qualities ─────────────────────────────
-ipcMain.handle("yt-get-qualities", async (_event, url) => {
-  try {
-    const videoId = extractVideoId(url);
-    if (!videoId) throw new Error("Invalid YouTube URL");
-
-    const ytUrl  = `https://www.youtube.com/watch?v=${videoId}`;
-    const jsonBuf = await runYtDlp([
-      "--dump-json",
-      "--no-playlist",
-      "--no-warnings",
-      ytUrl,
-    ]);
-    const info = JSON.parse(jsonBuf.toString("utf8"));
-
-    // Video-only formats (have video codec, no audio codec)
-    const videoFmts = (info.formats || []).filter(
-      (f) => f.vcodec && f.vcodec !== "none" && f.height && f.height > 0,
-    );
-
-    // Best format per height bucket (highest tbr/vbr wins)
-    const bestByHeight = {};
-    for (const fmt of videoFmts) {
-      const h     = fmt.height;
-      const score = fmt.tbr || fmt.vbr || 0;
-      if (!bestByHeight[h] || score > (bestByHeight[h]._score || 0)) {
-        bestByHeight[h] = { ...fmt, _score: score };
-      }
-    }
-
-    function heightLabel(h) {
-      if (h >= 2160) return "4K (2160p)";
-      if (h >= 1440) return "1440p";
-      if (h >= 1080) return "1080p Full HD";
-      if (h >= 720)  return "720p HD";
-      if (h >= 480)  return "480p";
-      return `${h}p`;
-    }
-
-    const ALL_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
-
-    // Recommend 1080p if available, else the highest available
-    const availableHeights = ALL_HEIGHTS.filter((h) => bestByHeight[h]);
-    const recommendedHeight = availableHeights.includes(1080)
-      ? 1080
-      : (availableHeights[0] || 720);
-
-    const qualities = ALL_HEIGHTS.map((h) => {
-      const fmt = bestByHeight[h];
-      const fileSizeBytes = fmt?.filesize || fmt?.filesize_approx || null;
-      const fileSizeMB    = fileSizeBytes ? Math.round(fileSizeBytes / 1024 / 1024) : null;
-      return {
-        height:      h,
-        label:       heightLabel(h),
-        formatId:    fmt ? String(fmt.format_id) : null,
-        fileSizeMB,
-        available:   !!fmt,
-        recommended: h === recommendedHeight,
-      };
-    });
-
-    return qualities;
-  } catch (err) {
-    return { error: String(err.message ?? err) };
-  }
-});
-
 // ── IPC: YouTube — fetch video info (via yt-dlp) ────────────────────────────
 ipcMain.handle("yt-get-info", async (_event, url) => {
   try {
@@ -536,7 +469,7 @@ function runFfmpegMerge(videoPath, audioPath, outputPath) {
 }
 
 // ── IPC: YouTube — download + merge into a single MP4 ────────────────────────
-ipcMain.handle("yt-download-merged", async (event, { url, videoFormatId }) => {
+ipcMain.handle("yt-download-merged", async (event, url) => {
   try {
     const videoId = extractVideoId(url);
     if (!videoId) throw new Error("Invalid YouTube URL");
@@ -595,14 +528,9 @@ ipcMain.handle("yt-download-merged", async (event, { url, videoFormatId }) => {
     // ── Step 3: Download video (video-only stream) to temp file ───────────────
     event.sender.send("yt-progress-video", { percent: 0, downloaded: 0, total: 100 });
 
-    // Use caller-specified format if provided; else fall back to best available
-    const videoFormat = videoFormatId
-      ? String(videoFormatId)
-      : "bestvideo[ext=mp4]/bestvideo[height<=1080]/bestvideo";
-
     await runYtDlpFile(
       [
-        "-f", videoFormat,
+        "-f", "bestvideo[ext=mp4]/bestvideo[height<=1080]/bestvideo",
         "--no-playlist",
         "--no-warnings",
         "--newline",

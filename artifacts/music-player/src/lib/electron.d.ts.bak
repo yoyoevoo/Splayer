@@ -23,15 +23,6 @@ interface YtDownloadResult extends YtVideoInfo {
   ext: string;
 }
 
-interface YtVideoQuality {
-  height:      number;
-  label:       string;
-  formatId:    string | null;
-  fileSizeMB:  number | null;
-  available:   boolean;
-  recommended: boolean;
-}
-
 declare global {
   interface Window {
     electronAPI?: {
@@ -56,11 +47,8 @@ declare global {
       /** Download video (MP4) from a YouTube URL. */
       ytDownloadVideo: (url: string) => Promise<YtDownloadResult | { error: string }>;
 
-      /** Fetch available video quality options for a YouTube URL. */
-      ytGetQualities: (url: string) => Promise<YtVideoQuality[] | { error: string }>;
-
       /** Download audio + video then merge into a single MP4 via ffmpeg. */
-      ytDownloadMerged: (params: { url: string; videoFormatId?: string | null }) => Promise<YtDownloadResult | { error: string }>;
+      ytDownloadMerged: (url: string) => Promise<YtDownloadResult | { error: string }>;
 
       /** Returns the port of the local YouTube embed proxy server. */
       getEmbedPort: () => Promise<number>;
