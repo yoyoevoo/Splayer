@@ -133,12 +133,12 @@ export function NowPlaying() {
               </div>
             </button>
 
-            {/* z:4 — visualizer toggle (top-right corner) */}
+            {/* z:4 — visualizer toggle (top-left corner) */}
             <button
               onClick={toggleViz}
               title={vizEnabled ? "Hide visualizer" : "Show visualizer"}
               className={cn(
-                "absolute top-2 right-2 flex items-center justify-center",
+                "absolute top-2 left-2 flex items-center justify-center",
                 "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
                 "transition-all duration-200",
                 vizEnabled

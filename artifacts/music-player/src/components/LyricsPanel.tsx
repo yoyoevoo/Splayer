@@ -69,7 +69,7 @@ interface LyricsPanelProps {
 }
 
 export function LyricsPanel({ open, onOpenChange: _onOpenChange }: LyricsPanelProps) {
-  const { currentTrack, currentTime } = usePlayer();
+  const { currentTrack, currentTime, seek } = usePlayer();
   const [lyrics, setLyrics] = useState<LyricsState>({ status: "idle" });
   const [fetchedFor, setFetchedFor] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
@@ -224,8 +224,11 @@ export function LyricsPanel({ open, onOpenChange: _onOpenChange }: LyricsPanelPr
         )}
       </div>
 
-      {/* Scrollable lyrics area */}
-      <div className="relative z-10 flex-1 overflow-y-auto scroll-smooth px-4 pb-4">
+      {/* Scrollable lyrics area — scrollbar hidden on all browsers */}
+      <div
+        className="relative z-10 flex-1 overflow-y-auto scroll-smooth px-4 pb-4 [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: "none" } as React.CSSProperties}
+      >
 
         {!currentTrack && (
           <div className="flex items-center justify-center h-full">
@@ -256,8 +259,10 @@ export function LyricsPanel({ open, onOpenChange: _onOpenChange }: LyricsPanelPr
                 <div
                   key={i}
                   ref={isActive ? activeLineRef : undefined}
+                  onClick={() => seek(line.time)}
                   className={cn(
-                    "px-2 py-1 rounded transition-all duration-300 leading-snug select-none",
+                    "px-2 py-1 rounded transition-all duration-300 leading-snug select-none cursor-pointer",
+                    "hover:bg-white/10 hover:scale-[1.03] active:scale-100",
                     isActive
                       ? "text-white font-bold text-base scale-105"
                       : isPast

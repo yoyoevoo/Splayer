@@ -213,7 +213,7 @@ export function PlayerControls() {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => setLyricsOpen(true)}
+              onClick={() => setLyricsOpen(!lyricsOpen)}
               className={cn(
                 "h-8 w-8",
                 lyricsOpen ? "text-primary" : "text-muted-foreground",
