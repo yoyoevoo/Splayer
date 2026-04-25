@@ -10,6 +10,7 @@ import {
   Music,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   ScanSearch,
   Search,
@@ -33,6 +34,13 @@ import {
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
 import type { Playlist as PlaylistType, Track } from "@/lib/types";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AlbumCover } from "./AlbumCover";
@@ -267,6 +275,8 @@ function LibraryView() {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.25, delay: listIdx * 0.015 }}
                 >
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
                   <div
                     className={cn(
                       "group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
@@ -396,6 +406,37 @@ function LibraryView() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-52">
+                      <ContextMenuItem
+                        onClick={() =>
+                          playFromList(
+                            tracks.map((tr) => tr.id),
+                            i,
+                            "Library",
+                          )
+                        }
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Play
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        onClick={() => removeTrack(t.id)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Remove from library
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() => setDeleteTarget(t)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete file from disk
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 </motion.li>
               );
             })}

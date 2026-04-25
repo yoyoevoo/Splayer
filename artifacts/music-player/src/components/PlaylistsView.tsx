@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight,
   Clock,
+  FolderX,
   Heart,
   History,
   ImagePlus,
@@ -44,6 +45,7 @@ function smartIcon(kind: SmartPlaylistKind) {
   if (kind === "recently-played") return History;
   if (kind === "most-played") return TrendingUp;
   if (kind === "recently-added") return Sparkles;
+  if (kind === "no-playlist") return FolderX;
   return Clock;
 }
 
@@ -56,6 +58,8 @@ function smartGradient(kind: SmartPlaylistKind): string {
     return "linear-gradient(135deg, hsl(28 80% 45%), hsl(15 70% 30%))";
   if (kind === "recently-added")
     return "linear-gradient(135deg, hsl(200 70% 45%), hsl(260 60% 30%))";
+  if (kind === "no-playlist")
+    return "linear-gradient(135deg, hsl(0 45% 32%), hsl(350 55% 20%))";
   return "linear-gradient(135deg, hsl(140 50% 40%), hsl(180 55% 25%))";
 }
 
@@ -97,7 +101,7 @@ export function PlaylistsView({
           </div>
           {SMART_PLAYLISTS.map((s) => {
             const Icon = smartIcon(s.kind);
-            const items = smartPlaylistTracks(s.kind, tracks);
+            const items = smartPlaylistTracks(s.kind, tracks, playlists);
             return (
               <button
                 key={s.kind}

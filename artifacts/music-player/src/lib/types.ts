@@ -32,7 +32,8 @@ export type SmartPlaylistKind =
   | "recently-added"
   | "never-played"
   | "recently-played"
-  | "liked-songs";
+  | "liked-songs"
+  | "no-playlist";
 
 export interface SmartPlaylist {
   kind: SmartPlaylistKind;
@@ -66,11 +67,17 @@ export const SMART_PLAYLISTS: SmartPlaylist[] = [
     name: "Never Played",
     description: "Tracks you haven't listened to yet",
   },
+  {
+    kind: "no-playlist",
+    name: "No Playlist",
+    description: "Tracks not added to any playlist",
+  },
 ];
 
 export function smartPlaylistTracks(
   kind: SmartPlaylistKind,
   allTracks: Track[],
+  playlists?: Playlist[],
 ): Track[] {
   switch (kind) {
     case "liked-songs":
@@ -99,6 +106,14 @@ export function smartPlaylistTracks(
       return [...allTracks]
         .filter((t) => (t.playCount ?? 0) === 0)
         .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+    case "no-playlist": {
+      const inPlaylist = new Set(
+        (playlists ?? []).flatMap((p) => p.trackIds),
+      );
+      return [...allTracks]
+        .filter((t) => !inPlaylist.has(t.id))
+        .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+    }
   }
 }
 

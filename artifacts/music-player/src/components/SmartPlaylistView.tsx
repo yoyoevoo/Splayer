@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Clock,
+  FolderX,
   Heart,
   History,
   Play,
@@ -45,6 +46,7 @@ function smartIcon(kind: SmartPlaylistKind) {
   if (kind === "recently-played") return History;
   if (kind === "most-played") return TrendingUp;
   if (kind === "recently-added") return Sparkles;
+  if (kind === "no-playlist") return FolderX;
   return Clock;
 }
 
@@ -57,6 +59,8 @@ function smartGradient(kind: SmartPlaylistKind): string {
     return "linear-gradient(135deg, hsl(28 80% 45%), hsl(15 70% 30%))";
   if (kind === "recently-added")
     return "linear-gradient(135deg, hsl(200 70% 45%), hsl(260 60% 30%))";
+  if (kind === "no-playlist")
+    return "linear-gradient(135deg, hsl(0 45% 32%), hsl(350 55% 20%))";
   return "linear-gradient(135deg, hsl(140 50% 40%), hsl(180 55% 25%))";
 }
 
@@ -72,11 +76,13 @@ function emptyMessage(kind: SmartPlaylistKind): string {
       return "Add music to your library to see your latest additions.";
     case "never-played":
       return "You've listened to everything. Nice work!";
+    case "no-playlist":
+      return "All your tracks are in at least one playlist. Nice!";
   }
 }
 
 export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
-  const { tracks, currentTrack, isPlaying, playFromList, toggleLike, deleteTrackWithFile } =
+  const { tracks, playlists, currentTrack, isPlaying, playFromList, toggleLike, deleteTrackWithFile } =
     usePlayer();
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
@@ -85,8 +91,8 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
   const Icon = smartIcon(kind);
 
   const computed = useMemo(
-    () => smartPlaylistTracks(kind, tracks),
-    [kind, tracks],
+    () => smartPlaylistTracks(kind, tracks, playlists),
+    [kind, tracks, playlists],
   );
 
   const filtered = useMemo(() => {
