@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart2, ImagePlus, Pencil } from "lucide-react";
+import { BarChart2, Film, ImagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
@@ -8,6 +8,7 @@ import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { Visualizer } from "./Visualizer";
 import { LyricsPanel } from "./LyricsPanel";
+import { FloatingVideoPlayer } from "./FloatingVideoPlayer";
 import { cn } from "@/lib/utils";
 
 function readVizPref(): boolean {
@@ -19,16 +20,52 @@ function writeVizPref(v: boolean) {
 }
 
 export function NowPlaying() {
-  const { currentTrack, setCustomCover, lyricsOpen, setLyricsOpen } = usePlayer();
+  const { currentTrack, tracks, setCustomCover, lyricsOpen, setLyricsOpen } = usePlayer();
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const [editOpen,   setEditOpen]   = useState(false);
-  const [vizEnabled, setVizEnabled] = useState(readVizPref);
+  const [editOpen,      setEditOpen]      = useState(false);
+  const [vizEnabled,    setVizEnabled]    = useState(readVizPref);
+  const [videoOpen,     setVideoOpen]     = useState(false);
+  const [noVideoTip,    setNoVideoTip]    = useState(false);
+  const noVideoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleViz = () => {
     const next = !vizEnabled;
     setVizEnabled(next);
     writeVizPref(next);
   };
+
+  // Find a companion MP4 track that shares the same base filename as the current track
+  const matchingVideoTrack = currentTrack
+    ? (() => {
+        const base = currentTrack.file.name.replace(/\.[^.]+$/, "").toLowerCase();
+        return tracks.find(
+          (t) =>
+            t.id !== currentTrack.id &&
+            t.file.name.toLowerCase() === base + ".mp4",
+        ) ?? null;
+      })()
+    : null;
+
+  const hasVideo = matchingVideoTrack !== null;
+
+  // Close video panel whenever the current track changes and there's no match
+  useEffect(() => {
+    if (!hasVideo) setVideoOpen(false);
+  }, [hasVideo]);
+
+  const onVideoButtonClick = () => {
+    if (hasVideo) {
+      setVideoOpen((o) => !o);
+    } else {
+      if (noVideoTimer.current) clearTimeout(noVideoTimer.current);
+      setNoVideoTip(true);
+      noVideoTimer.current = setTimeout(() => setNoVideoTip(false), 2000);
+    }
+  };
+
+  useEffect(() => () => {
+    if (noVideoTimer.current) clearTimeout(noVideoTimer.current);
+  }, []);
 
   if (!currentTrack) {
     return (
@@ -150,6 +187,36 @@ export function NowPlaying() {
               <BarChart2 className="w-3.5 h-3.5" />
             </button>
 
+            {/* z:4 — video player button (top-left, next to visualizer toggle) */}
+            <div className="absolute top-2" style={{ left: 40, zIndex: 4 }}>
+              <button
+                onClick={onVideoButtonClick}
+                title={hasVideo ? (videoOpen ? "Close video" : "Play video") : "No video file found"}
+                className={cn(
+                  "flex items-center justify-center",
+                  "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
+                  "transition-all duration-200",
+                  hasVideo && videoOpen
+                    ? "bg-primary/90 text-white"
+                    : hasVideo
+                      ? "bg-black/50 text-white hover:text-white hover:bg-primary/60"
+                      : "bg-black/30 text-white/25 cursor-default",
+                )}
+              >
+                <Film className="w-3.5 h-3.5" />
+              </button>
+
+              {/* "No video file found" tooltip */}
+              {noVideoTip && (
+                <div
+                  className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium shadow-lg"
+                  style={{ background: "rgba(0,0,0,0.85)", color: "#fff", zIndex: 10 }}
+                >
+                  No video file found
+                </div>
+              )}
+            </div>
+
             {/* z:5 — lyrics overlay (sits on top of album art + visualizer) */}
             <LyricsPanel open={lyricsOpen} onOpenChange={setLyricsOpen} />
           </div>
@@ -182,6 +249,15 @@ export function NowPlaying() {
           </div>
         </motion.div>
       </AnimatePresence>
+
+      {/* Floating video player */}
+      {videoOpen && matchingVideoTrack && (
+        <FloatingVideoPlayer
+          videoUrl={matchingVideoTrack.url}
+          title={matchingVideoTrack.title || matchingVideoTrack.file.name}
+          onClose={() => setVideoOpen(false)}
+        />
+      )}
 
       <input
         ref={coverInputRef}
