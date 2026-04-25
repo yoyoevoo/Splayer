@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, FileMusic, FolderOpen, HelpCircle, Music, Upload } from "lucide-react";
+import {
+  ChevronDown,
+  FileMusic,
+  FolderOpen,
+  HelpCircle,
+  Maximize2,
+  Minimize2,
+  Music,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +22,7 @@ import { NowPlaying } from "@/components/NowPlaying";
 import { Playlist } from "@/components/Playlist";
 import { PlayerControls } from "@/components/PlayerControls";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
+import { MiniPlayer } from "@/components/MiniPlayer";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Player() {
@@ -26,11 +36,13 @@ export default function Player() {
     toggleShuffle,
     cycleRepeat,
   } = usePlayer();
+
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [miniMode,      setMiniMode]      = useState(false);
+  const [dragOver,      setDragOver]      = useState(false);
   const dragCounter = useRef(0);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
+  const fileRef     = useRef<HTMLInputElement>(null);
+  const folderRef   = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (folderRef.current) {
@@ -40,9 +52,7 @@ export default function Player() {
   }, []);
 
   const onFiles = useCallback(
-    (files: File[]) => {
-      if (files.length) addFiles(files);
-    },
+    (files: File[]) => { if (files.length) addFiles(files); },
     [addFiles],
   );
 
@@ -55,30 +65,26 @@ export default function Player() {
     };
     const onDragLeave = () => {
       dragCounter.current -= 1;
-      if (dragCounter.current <= 0) {
-        dragCounter.current = 0;
-        setDragOver(false);
-      }
+      if (dragCounter.current <= 0) { dragCounter.current = 0; setDragOver(false); }
     };
-    const onDragOver = (e: DragEvent) => {
+    const onDragOver  = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
     };
     const onDrop = (e: DragEvent) => {
       e.preventDefault();
       dragCounter.current = 0;
       setDragOver(false);
-      const files = Array.from(e.dataTransfer?.files ?? []);
-      onFiles(files);
+      onFiles(Array.from(e.dataTransfer?.files ?? []));
     };
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragleave", onDragLeave);
-    window.addEventListener("dragover", onDragOver);
-    window.addEventListener("drop", onDrop);
+    window.addEventListener("dragover",  onDragOver);
+    window.addEventListener("drop",      onDrop);
     return () => {
       window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragleave", onDragLeave);
-      window.removeEventListener("dragover", onDragOver);
-      window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragover",  onDragOver);
+      window.removeEventListener("drop",      onDrop);
     };
   }, [onFiles]);
 
@@ -86,40 +92,22 @@ export default function Player() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      if (e.code === "Space") {
-        e.preventDefault();
-        togglePlay();
-      } else if (e.code === "ArrowRight") {
-        e.preventDefault();
-        next();
-      } else if (e.code === "ArrowLeft") {
-        e.preventDefault();
-        prev();
-      } else if (e.key === "m" || e.key === "M") {
-        toggleMute();
-      } else if (e.key === "s" || e.key === "S") {
-        toggleShuffle();
-      } else if (e.key === "r" || e.key === "R") {
-        cycleRepeat();
-      } else if (e.key === "?") {
-        setShortcutsOpen((o) => !o);
-      }
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (e.code === "Space")                { e.preventDefault(); togglePlay(); }
+      else if (e.code === "ArrowRight")      { e.preventDefault(); next(); }
+      else if (e.code === "ArrowLeft")       { e.preventDefault(); prev(); }
+      else if (e.key === "m" || e.key === "M") { toggleMute(); }
+      else if (e.key === "s" || e.key === "S") { toggleShuffle(); }
+      else if (e.key === "r" || e.key === "R") { cycleRepeat(); }
+      else if (e.key === "?")                  { setShortcutsOpen((o) => !o); }
+      else if (e.key === "p" || e.key === "P") { setMiniMode((o) => !o); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePlay, next, prev, toggleMute, toggleShuffle, cycleRepeat]);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    onFiles(files);
+    onFiles(Array.from(e.target.files ?? []));
     e.target.value = "";
   };
 
@@ -127,30 +115,39 @@ export default function Player() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-background text-foreground overflow-hidden">
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-card-border">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-md flex items-center justify-center bg-primary/15 text-primary">
             <Music className="w-4 h-4" strokeWidth={2} />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-serif tracking-tight">
-              Music Player
-            </div>
+            <div className="text-sm font-serif tracking-tight">Music Player</div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Local listening room
             </div>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Mini Player toggle */}
+          <Button
+            size="sm"
+            variant={miniMode ? "default" : "ghost"}
+            className="gap-2"
+            onClick={() => setMiniMode((m) => !m)}
+            title={miniMode ? "Return to full player (P)" : "Switch to mini player (P)"}
+            data-testid="button-mini-player"
+          >
+            {miniMode
+              ? <><Maximize2 className="w-3.5 h-3.5" /> Full Player</>
+              : <><Minimize2 className="w-3.5 h-3.5" /> Mini Player</>}
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="gap-2"
-                data-testid="button-header-add"
-              >
+              <Button size="sm" variant="ghost" className="gap-2" data-testid="button-header-add">
                 <Upload className="w-3.5 h-3.5" />
                 Add music
                 <ChevronDown className="w-3 h-3 opacity-60" />
@@ -167,6 +164,7 @@ export default function Player() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
           <Button
             size="icon"
             variant="ghost"
@@ -180,36 +178,88 @@ export default function Player() {
         </div>
       </header>
 
-      {/* Main */}
-      <div className="flex-1 flex overflow-hidden">
-        {hasTracks ? (
-          <>
-            <NowPlaying />
-            <Playlist />
-          </>
+      {/* ── Main content ───────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {miniMode ? (
+          /* Mini mode: show a calm backdrop so it's obvious the UI collapsed */
+          <motion.div
+            key="mini-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{    opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1,   opacity: 1 }}
+              transition={{ delay: 0.05, duration: 0.3 }}
+              className="flex flex-col items-center gap-3"
+            >
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                <Minimize2 className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-base font-serif text-foreground/80">Mini Player is active</p>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                The floating mini player is on your screen. Drag it anywhere, or click{" "}
+                <span className="text-foreground font-medium">Full Player</span> to come back.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 gap-2"
+                onClick={() => setMiniMode(false)}
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                Return to full player
+              </Button>
+            </motion.div>
+          </motion.div>
         ) : (
-          <EmptyState />
+          /* Normal mode */
+          <motion.div
+            key="main-content"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{    opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="flex-1 flex overflow-hidden"
+          >
+            {hasTracks ? (
+              <>
+                <NowPlaying />
+                <Playlist />
+              </>
+            ) : (
+              <EmptyState />
+            )}
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
-      {/* Footer controls */}
+      {/* ── Footer controls (always visible) ──────────────────────────── */}
       <PlayerControls />
 
-      {/* Drag overlay */}
+      {/* ── Floating Mini Player ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {miniMode && (
+          <MiniPlayer key="mini" onExpand={() => setMiniMode(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* ── Drag overlay ──────────────────────────────────────────────── */}
       <AnimatePresence>
         {dragOver && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            exit={{    opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none"
           >
             <div className="border-2 border-dashed border-primary rounded-2xl px-12 py-10 text-center bg-card/80 shadow-2xl">
               <Upload className="w-8 h-8 mx-auto text-primary mb-3" />
               <p className="text-lg font-serif">Drop your music here</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                MP3, FLAC, WAV, OGG, M4A, MP4
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">MP3, FLAC, WAV, OGG, M4A, MP4</p>
             </div>
           </motion.div>
         )}
@@ -217,21 +267,11 @@ export default function Player() {
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
 
-      <input
-        ref={fileRef}
-        type="file"
+      <input ref={fileRef} type="file"
         accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
-        multiple
-        className="hidden"
-        onChange={onChange}
+        multiple className="hidden" onChange={onChange}
       />
-      <input
-        ref={folderRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={onChange}
-      />
+      <input ref={folderRef} type="file" multiple className="hidden" onChange={onChange} />
     </div>
   );
 }
