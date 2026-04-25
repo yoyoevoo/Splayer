@@ -20,6 +20,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
 import {
   trackCoverUrl,
@@ -264,6 +271,8 @@ export function PlaylistDetailView({
                     exit={{ opacity: 0, x: 20 }}
                     transition={{ duration: 0.2 }}
                   >
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
                     <div
                       className={cn(
                         "group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
@@ -334,6 +343,30 @@ export function PlaylistDetailView({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-56">
+                        <ContextMenuItem
+                          onClick={() =>
+                            playFromList(playlist.trackIds, i, playlist.name)
+                          }
+                          data-testid={`context-play-${t.id}`}
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Play
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem
+                          onClick={() =>
+                            removeTrackFromPlaylist(playlist.id, t.id)
+                          }
+                          className="text-destructive focus:text-destructive"
+                          data-testid={`context-remove-${t.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Remove from "{playlist.name}"
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   </motion.li>
                 );
               })}
