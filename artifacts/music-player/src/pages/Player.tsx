@@ -23,6 +23,7 @@ import { Playlist } from "@/components/Playlist";
 import { PlayerControls } from "@/components/PlayerControls";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { MiniPlayer } from "@/components/MiniPlayer";
+import { HomeDashboard } from "@/components/HomeDashboard";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Player() {
@@ -178,9 +179,11 @@ export default function Player() {
         </div>
       </header>
 
-      {/* ── Main content (always visible, mini player floats on top) ──── */}
+      {/* ── Main content ───────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
-        {hasTracks ? (
+        {miniMode ? (
+          <HomeDashboard />
+        ) : hasTracks ? (
           <>
             <NowPlaying />
             <Playlist />
