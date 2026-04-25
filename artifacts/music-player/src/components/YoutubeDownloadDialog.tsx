@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 type Mode        = "search" | "url";
 type PreviewMode = "audio" | "video";
+type DownloadType = "audio" | "video" | "both";
 type Stage =
   | "idle"
   | "searching"
@@ -108,6 +109,40 @@ function ProgressBar({
   );
 }
 
+// ── Download option popup ────────────────────────────────────────────────────
+
+function DownloadMenu({ onPick }: { onPick: (t: DownloadType) => void }) {
+  const options: { type: DownloadType; icon: string; label: string }[] = [
+    { type: "audio", icon: "🎵", label: "Audio only (MP3)" },
+    { type: "video", icon: "🎬", label: "Video only (MP4)" },
+    { type: "both",  icon: "📦", label: "Both (MP3 + MP4)" },
+  ];
+  return (
+    <div
+      className={cn(
+        "absolute bottom-full mb-1.5 right-0 z-50",
+        "w-44 rounded-xl border border-card-border bg-card shadow-xl overflow-hidden",
+      )}
+      // stop clicks inside the menu from bubbling to the overlay
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {options.map(({ type, icon, label }) => (
+        <button
+          key={type}
+          onClick={() => onPick(type)}
+          className={cn(
+            "w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium",
+            "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
+          )}
+        >
+          <span className="text-sm">{icon}</span>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -132,8 +167,13 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const [url,     setUrl]     = useState("");
   const [urlInfo, setUrlInfo] = useState<VideoInfo | null>(null);
 
+  // Download-menu state
+  // downloadMenuFor: videoId for search rows, "url" for URL mode, null = closed
+  const [downloadMenuFor, setDownloadMenuFor] = useState<string | null>(null);
+
   // Shared download state
   const [downloadInfo,   setDownloadInfo]   = useState<VideoInfo | null>(null);
+  const [dlType,         setDlType]         = useState<DownloadType>("both");
   const [progressAudio,  setProgressAudio]  = useState(0);
   const [progressVideo,  setProgressVideo]  = useState(0);
   const [audioDone,      setAudioDone]      = useState(false);
@@ -169,6 +209,8 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       setUrl("");
       setUrlInfo(null);
       setDownloadInfo(null);
+      setDownloadMenuFor(null);
+      setDlType("both");
       setProgressAudio(0);
       setProgressVideo(0);
       setAudioDone(false);
@@ -223,11 +265,16 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  // ── Core download — both MP3 + MP4 in parallel ───────────────────────────
-  const performDownload = async (videoUrl: string, info: VideoInfo) => {
+  // ── Core download ─────────────────────────────────────────────────────────
+  const performDownload = async (
+    videoUrl: string,
+    info: VideoInfo,
+    type: DownloadType,
+  ) => {
     if (!api?.ytDownload || !api?.ytDownloadVideo) return;
 
     setDownloadInfo(info);
+    setDlType(type);
     setStage("downloading");
     setProgressAudio(0);
     setProgressVideo(0);
@@ -235,19 +282,25 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     setVideoDone(false);
     setAudioError(false);
     setVideoError(false);
+    setDownloadMenuFor(null);
+
+    const doAudio = type === "audio" || type === "both";
+    const doVideo = type === "video" || type === "both";
 
     // Subscribe to progress events
-    const cleanupA = api.onYtProgress(({ percent }) => setProgressAudio(percent));
-    const cleanupV = api.onYtProgressVideo
+    const cleanupA = doAudio
+      ? api.onYtProgress(({ percent }) => setProgressAudio(percent))
+      : () => {};
+    const cleanupV = doVideo && api.onYtProgressVideo
       ? api.onYtProgressVideo(({ percent }) => setProgressVideo(percent))
       : () => {};
     cleanupAudioRef.current = cleanupA;
     cleanupVideoRef.current = cleanupV;
 
-    // Run both downloads in parallel
+    // Run requested downloads
     const [audioResult, videoResult] = await Promise.all([
-      api.ytDownload(videoUrl),
-      api.ytDownloadVideo(videoUrl),
+      doAudio ? api.ytDownload(videoUrl) : Promise.resolve(null),
+      doVideo ? api.ytDownloadVideo(videoUrl) : Promise.resolve(null),
     ]);
 
     cleanupA();
@@ -257,40 +310,42 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
     let anySuccess = false;
 
-    // Handle audio result
-    if ("error" in audioResult) {
-      setAudioError(true);
-    } else {
-      setAudioDone(true);
-      setProgressAudio(100);
-      const safe     = sanitizeFilename(audioResult.title);
-      const filename = `${safe}.${audioResult.ext}`;
-      const blob     = new Blob([audioResult.bytes.buffer as ArrayBuffer], { type: audioResult.mimeType });
-      const file     = new File([blob], filename, { type: audioResult.mimeType });
-      await addFiles([file]);
-      await updateTrackInfo(`${filename}-${file.size}`, {
-        title:  audioResult.title,
-        artist: audioResult.author,
-      });
-      anySuccess = true;
+    if (audioResult !== null) {
+      if ("error" in audioResult) {
+        setAudioError(true);
+      } else {
+        setAudioDone(true);
+        setProgressAudio(100);
+        const safe     = sanitizeFilename(audioResult.title);
+        const filename = `${safe}.${audioResult.ext}`;
+        const blob     = new Blob([audioResult.bytes.buffer as ArrayBuffer], { type: audioResult.mimeType });
+        const file     = new File([blob], filename, { type: audioResult.mimeType });
+        await addFiles([file]);
+        await updateTrackInfo(`${filename}-${file.size}`, {
+          title:  audioResult.title,
+          artist: audioResult.author,
+        });
+        anySuccess = true;
+      }
     }
 
-    // Handle video result
-    if ("error" in videoResult) {
-      setVideoError(true);
-    } else {
-      setVideoDone(true);
-      setProgressVideo(100);
-      const safe     = sanitizeFilename(videoResult.title);
-      const filename = `${safe}.${videoResult.ext}`;
-      const blob     = new Blob([videoResult.bytes.buffer as ArrayBuffer], { type: videoResult.mimeType });
-      const file     = new File([blob], filename, { type: videoResult.mimeType });
-      await addFiles([file]);
-      await updateTrackInfo(`${filename}-${file.size}`, {
-        title:  videoResult.title,
-        artist: videoResult.author,
-      });
-      anySuccess = true;
+    if (videoResult !== null) {
+      if ("error" in videoResult) {
+        setVideoError(true);
+      } else {
+        setVideoDone(true);
+        setProgressVideo(100);
+        const safe     = sanitizeFilename(videoResult.title);
+        const filename = `${safe}.${videoResult.ext}`;
+        const blob     = new Blob([videoResult.bytes.buffer as ArrayBuffer], { type: videoResult.mimeType });
+        const file     = new File([blob], filename, { type: videoResult.mimeType });
+        await addFiles([file]);
+        await updateTrackInfo(`${filename}-${file.size}`, {
+          title:  videoResult.title,
+          artist: videoResult.author,
+        });
+        anySuccess = true;
+      }
     }
 
     setDownloadingId(null);
@@ -298,27 +353,21 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     if (anySuccess) {
       setStage("done");
     } else {
-      setErrorMsg("Both downloads failed. Check your internet connection.");
+      setErrorMsg("Download failed. Check your internet connection.");
       setStage("error");
     }
   };
 
-  // ── URL-mode download ────────────────────────────────────────────────────
-  const handleUrlDownload = () => {
-    if (!urlInfo) return;
-    performDownload(url.trim(), urlInfo);
-  };
-
-  // ── Search-result download ───────────────────────────────────────────────
-  const handleSearchDownload = (r: SearchResult) => {
-    setDownloadingId(r.videoId);
-    performDownload(r.url, {
-      title:        r.title,
-      author:       r.channelName,
-      durationSecs: r.durationSecs,
-      thumbnailUrl: r.thumbnail || null,
-    });
-  };
+  // ── Derived success message ───────────────────────────────────────────────
+  function successMessage(): string {
+    if (dlType === "audio") return "✅ Audio downloaded";
+    if (dlType === "video") return "✅ Video downloaded";
+    // both
+    if (audioDone && videoDone) return "✅ Audio and Video downloaded";
+    if (audioDone) return "✅ Audio downloaded · ⚠️ MP4 failed";
+    if (videoDone) return "✅ Video downloaded · ⚠️ MP3 failed";
+    return "";
+  }
 
   // ── Derived flags ────────────────────────────────────────────────────────
   const isElectron    = !!api?.ytSearch;
@@ -326,8 +375,25 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const isDone        = stage === "done";
   const showControls  = isElectron && !isDownloading && !isDone;
 
-  const bothDone    = audioDone && videoDone;
-  const partialDone = (audioDone || videoDone) && !(audioDone && videoDone);
+  // ── Download button used in both search rows and URL mode ────────────────
+  function DownloadButton({ id, onPick }: { id: string; onPick: (t: DownloadType) => void }) {
+    const isOpen = downloadMenuFor === id;
+    return (
+      <div className="relative shrink-0">
+        {isOpen && <DownloadMenu onPick={onPick} />}
+        <Button
+          size="sm"
+          variant={isOpen ? "default" : "outline"}
+          className="gap-1.5 text-xs"
+          disabled={downloadingId === id}
+          onClick={() => setDownloadMenuFor(isOpen ? null : id)}
+        >
+          <Download className="h-3 w-3" />
+          Download
+        </Button>
+      </div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -339,6 +405,14 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
             Download from YouTube
           </DialogTitle>
         </DialogHeader>
+
+        {/* Transparent overlay to close the download menu on outside click */}
+        {downloadMenuFor && (
+          <div
+            className="fixed inset-0 z-40"
+            onMouseDown={() => setDownloadMenuFor(null)}
+          />
+        )}
 
         {/* ── Not in Electron ── */}
         {!isElectron && (
@@ -376,18 +450,22 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
             <div className="space-y-3">
-              <ProgressBar
-                label="MP3 Audio"
-                percent={progressAudio}
-                done={audioDone}
-                error={audioError}
-              />
-              <ProgressBar
-                label="MP4 Video"
-                percent={progressVideo}
-                done={videoDone}
-                error={videoError}
-              />
+              {(dlType === "audio" || dlType === "both") && (
+                <ProgressBar
+                  label="MP3 Audio"
+                  percent={progressAudio}
+                  done={audioDone}
+                  error={audioError}
+                />
+              )}
+              {(dlType === "video" || dlType === "both") && (
+                <ProgressBar
+                  label="MP4 Video"
+                  percent={progressVideo}
+                  done={videoDone}
+                  error={videoError}
+                />
+              )}
             </div>
           </div>
         )}
@@ -398,18 +476,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
             <div className="w-12 h-12 rounded-full bg-green-500/15 flex items-center justify-center mx-auto">
               <Download className="w-5 h-5 text-green-500" />
             </div>
-            {bothDone ? (
-              <p className="text-sm font-medium">
-                ✅ Audio and Video downloaded successfully
-              </p>
-            ) : partialDone ? (
-              <p className="text-sm font-medium">
-                {audioDone ? "✅ Audio downloaded" : ""}
-                {videoDone ? "✅ Video downloaded" : ""}
-                {audioError ? " · ⚠️ MP3 failed" : ""}
-                {videoError ? " · ⚠️ MP4 failed" : ""}
-              </p>
-            ) : null}
+            <p className="text-sm font-medium">{successMessage()}</p>
             <p className="text-xs text-muted-foreground truncate px-6">
               {downloadInfo?.title}
             </p>
@@ -435,6 +502,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                     setSearchResults([]);
                     setUrlInfo(null);
                     setPreviewId(null);
+                    setDownloadMenuFor(null);
                   }}
                   className={cn(
                     "flex-1 py-1.5 font-medium transition-colors",
@@ -572,22 +640,24 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                             </button>
                           </div>
 
-                          {/* Download button */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0 gap-1.5 text-xs"
-                            disabled={downloadingId === r.videoId}
-                            onClick={() => handleSearchDownload(r)}
-                          >
-                            <Download className="h-3 w-3" />
-                            Download
-                          </Button>
+                          {/* Download button with popup */}
+                          <DownloadButton
+                            id={r.videoId}
+                            onPick={(type) => {
+                              setDownloadingId(r.videoId);
+                              performDownload(r.url, {
+                                title:        r.title,
+                                author:       r.channelName,
+                                durationSecs: r.durationSecs,
+                                thumbnailUrl: r.thumbnail || null,
+                              }, type);
+                            }}
+                          />
                         </div>
                       ))}
                     </div>
 
-                    {/* Inline preview panel — audio stream or video iframe */}
+                    {/* Inline preview panel */}
                     {previewId && (
                       <div className="rounded-lg border border-primary/40 bg-card overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
@@ -704,10 +774,14 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                 )}
 
                 {stage === "ready" && urlInfo && (
-                  <Button onClick={handleUrlDownload} className="w-full gap-2">
-                    <Download className="h-4 w-4" />
-                    Download MP3 + MP4
-                  </Button>
+                  <div className="flex justify-end">
+                    <DownloadButton
+                      id="url"
+                      onPick={(type) =>
+                        performDownload(url.trim(), urlInfo!, type)
+                      }
+                    />
+                  </div>
                 )}
               </div>
             )}
