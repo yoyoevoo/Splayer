@@ -39,7 +39,7 @@ export default function Player() {
   } = usePlayer();
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [miniMode,      setMiniMode]      = useState(false);
+  const [miniMode,      setMiniMode]      = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
   const dragCounter = useRef(0);
   const fileRef     = useRef<HTMLInputElement>(null);

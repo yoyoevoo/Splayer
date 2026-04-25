@@ -620,6 +620,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [currentTrack, isPlaying]);
 
+  // ── Save last session (track + position) to localStorage ──────────────────
+  useEffect(() => {
+    const save = () => {
+      const id = currentTrackIdRef.current;
+      const audio = audioRef.current;
+      if (!id || !audio) return;
+      try {
+        localStorage.setItem(
+          "last-session",
+          JSON.stringify({ trackId: id, position: Math.floor(audio.currentTime) }),
+        );
+      } catch {}
+    };
+    window.addEventListener("beforeunload", save);
+    const interval = setInterval(save, 10_000);
+    return () => {
+      window.removeEventListener("beforeunload", save);
+      clearInterval(interval);
+    };
+  }, []);
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -796,6 +817,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               const have = new Set(prev.map((t) => t.id));
               return [...prev, ...restored.filter((t) => !have.has(t.id))];
             });
+
+            // Restore last session — load track paused at saved position
+            try {
+              const raw = localStorage.getItem("last-session");
+              if (raw) {
+                const { trackId, position } = JSON.parse(raw) as {
+                  trackId: string;
+                  position: number;
+                };
+                const track = restored.find((t) => t.id === trackId);
+                if (track && audioRef.current) {
+                  const audio = audioRef.current;
+                  audio.src = track.url;
+                  setCurrentTrackId(trackId);
+                  setCurrentTime(position);
+                  audio.addEventListener(
+                    "loadedmetadata",
+                    () => {
+                      audio.currentTime = Math.min(
+                        position,
+                        isFinite(audio.duration) ? audio.duration : position,
+                      );
+                    },
+                    { once: true },
+                  );
+                }
+              }
+            } catch {}
           }
         }
 

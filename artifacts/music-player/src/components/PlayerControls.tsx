@@ -275,30 +275,43 @@ export function PlayerControls() {
               </PopoverContent>
             </Popover>
 
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleMute}
-              className="h-8 w-8 text-muted-foreground"
-              data-testid="button-mute"
-              aria-label="Mute"
+            <div
+              className="flex items-center gap-1.5 flex-1 min-w-0"
+              onWheel={(e) => {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 0.01 : -0.01;
+                const next = Math.min(1, Math.max(0, volume + delta));
+                setVolume(next);
+              }}
             >
-              {muted || volume === 0 ? (
-                <VolumeX className="h-4 w-4" />
-              ) : volume < 0.5 ? (
-                <Volume1 className="h-4 w-4" />
-              ) : (
-                <Volume2 className="h-4 w-4" />
-              )}
-            </Button>
-            <Slider
-              value={[muted ? 0 : volume * 100]}
-              max={100}
-              step={1}
-              onValueChange={(v) => setVolume(v[0] / 100)}
-              className="flex-1"
-              data-testid="slider-volume"
-            />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={toggleMute}
+                className="h-8 w-8 text-muted-foreground shrink-0"
+                data-testid="button-mute"
+                aria-label="Mute"
+              >
+                {muted || volume === 0 ? (
+                  <VolumeX className="h-4 w-4" />
+                ) : volume < 0.5 ? (
+                  <Volume1 className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+              </Button>
+              <span className="text-[11px] tabular-nums text-muted-foreground w-6 shrink-0 text-right">
+                {muted ? 0 : Math.round(volume * 100)}
+              </span>
+              <Slider
+                value={[muted ? 0 : volume * 100]}
+                max={100}
+                step={1}
+                onValueChange={(v) => setVolume(v[0] / 100)}
+                className="flex-1"
+                data-testid="slider-volume"
+              />
+            </div>
           </div>
         </div>
       </div>
