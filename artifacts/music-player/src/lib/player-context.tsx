@@ -99,6 +99,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   queueIdsRef.current = currentQueueIds;
   const currentTrackIdRef = useRef<string | null>(null);
   currentTrackIdRef.current = currentTrackId;
+  const countedTrackIdRef = useRef<string | null>(null);
 
   if (!audioRef.current && typeof window !== "undefined") {
     audioRef.current = new Audio();
@@ -139,6 +140,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio || !track) return;
     if (audio.src !== track.url) {
       audio.src = track.url;
+      countedTrackIdRef.current = null;
     }
     setCurrentTrackId(trackId);
     audio.play().catch(() => {});
@@ -261,7 +263,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
     const onTime = () => setCurrentTime(audio.currentTime);
     const onMeta = () => setDuration(audio.duration || 0);
-    const onPlay = () => setIsPlaying(true);
+    const onPlay = () => {
+      setIsPlaying(true);
+      const id = currentTrackIdRef.current;
+      if (!id) return;
+      // Count a play once per track-load (only when starting from the top).
+      if (audio.currentTime > 2) return;
+      if (countedTrackIdRef.current === id) return;
+      countedTrackIdRef.current = id;
+      const now = Date.now();
+      setTracks((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                playCount: (t.playCount ?? 0) + 1,
+                lastPlayedAt: now,
+              }
+            : t,
+        ),
+      );
+      saveStoredTrack(id, {
+        playCount:
+          (tracksRef.current.find((t) => t.id === id)?.playCount ?? 0) + 1,
+        lastPlayedAt: now,
+      }).catch((e) => console.warn("Failed to save play count", e));
+    };
     const onPause = () => setIsPlaying(false);
     const onEnded = () => handleEnded();
 
@@ -347,6 +374,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           if (stored?.customCover) {
             customCoverUrl = URL.createObjectURL(stored.customCover);
           }
+          const addedAt = stored?.addedAt ?? Date.now();
+          const playCount = stored?.playCount ?? 0;
+          const lastPlayedAt = stored?.lastPlayedAt;
           const track: Track = {
             id,
             file,
@@ -358,6 +388,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             duration: meta.duration ?? 0,
             embeddedCoverUrl: meta.coverUrl,
             customCoverUrl,
+            addedAt,
+            playCount,
+            lastPlayedAt,
           };
           newTracks.push(track);
 
@@ -367,13 +400,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               fileName: file.name,
               fileType: file.type,
               fileSize: file.size,
-              addedAt: stored?.addedAt ?? Date.now(),
+              addedAt,
               metaTitle: meta.title,
               metaArtist: meta.artist,
               metaAlbum: meta.album,
               metaYear: meta.year,
               metaDuration: meta.duration,
               embeddedCover: meta.coverBlob,
+              playCount,
+              lastPlayedAt,
             });
           } catch (storageErr) {
             console.warn("Failed to persist track", file.name, storageErr);
@@ -431,6 +466,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               duration: s.metaDuration ?? 0,
               embeddedCoverUrl,
               customCoverUrl,
+              addedAt: s.addedAt ?? Date.now(),
+              playCount: s.playCount ?? 0,
+              lastPlayedAt: s.lastPlayedAt,
             });
           }
           if (restored.length > 0) {

@@ -36,13 +36,17 @@ import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
+import { SmartPlaylistView } from "./SmartPlaylistView";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
+import { EqualizerBars } from "./EqualizerBars";
+import type { SmartPlaylistKind } from "@/lib/types";
 
 type Tab = "library" | "playlists";
 type View =
   | { kind: "library" }
   | { kind: "playlists" }
-  | { kind: "playlist"; id: string };
+  | { kind: "playlist"; id: string }
+  | { kind: "smart"; smart: SmartPlaylistKind };
 
 export function Playlist() {
   const [view, setView] = useState<View>({ kind: "library" });
@@ -88,11 +92,18 @@ export function Playlist() {
       {view.kind === "playlists" && (
         <PlaylistsView
           onOpenPlaylist={(p) => setView({ kind: "playlist", id: p.id })}
+          onOpenSmart={(s) => setView({ kind: "smart", smart: s })}
         />
       )}
       {view.kind === "playlist" && (
         <PlaylistDetailView
           playlistId={view.id}
+          onBack={() => setView({ kind: "playlists" })}
+        />
+      )}
+      {view.kind === "smart" && (
+        <SmartPlaylistView
+          kind={view.smart}
           onBack={() => setView({ kind: "playlists" })}
         />
       )}
@@ -422,25 +433,3 @@ function AddToPlaylistSubmenu({
   );
 }
 
-function EqualizerBars() {
-  return (
-    <div className="flex items-end gap-[2px] h-3">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-[3px] bg-primary rounded-sm origin-bottom"
-          style={{
-            animation: `eq 1s ${i * 0.15}s ease-in-out infinite`,
-            height: "100%",
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes eq {
-          0%, 100% { transform: scaleY(0.4); }
-          50% { transform: scaleY(1); }
-        }
-      `}</style>
-    </div>
-  );
-}

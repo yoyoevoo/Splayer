@@ -17,6 +17,8 @@ interface StoredTrack {
   customTitle?: string;
   customArtist?: string;
   customAlbum?: string;
+  playCount?: number;
+  lastPlayedAt?: number;
 }
 
 interface StoredPlaylist {

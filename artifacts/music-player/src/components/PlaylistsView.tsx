@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ChevronRight,
+  Clock,
   ImagePlus,
   MoreHorizontal,
   Pencil,
   Plus,
+  Sparkles,
+  TrendingUp,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,8 +23,10 @@ import { usePlayer } from "@/lib/player-context";
 import {
   trackCoverUrl,
   playlistDuration,
+  smartPlaylistTracks,
+  SMART_PLAYLISTS,
 } from "@/lib/types";
-import type { Playlist } from "@/lib/types";
+import type { Playlist, SmartPlaylistKind } from "@/lib/types";
 import { formatLongDuration, formatMonthYear } from "@/lib/format";
 import { MosaicCover } from "./MosaicCover";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
@@ -28,9 +34,27 @@ import { EditPlaylistDialog } from "./EditPlaylistDialog";
 
 interface PlaylistsViewProps {
   onOpenPlaylist: (playlist: Playlist) => void;
+  onOpenSmart: (kind: SmartPlaylistKind) => void;
 }
 
-export function PlaylistsView({ onOpenPlaylist }: PlaylistsViewProps) {
+function smartIcon(kind: SmartPlaylistKind) {
+  if (kind === "most-played") return TrendingUp;
+  if (kind === "recently-added") return Sparkles;
+  return Clock;
+}
+
+function smartGradient(kind: SmartPlaylistKind): string {
+  if (kind === "most-played")
+    return "linear-gradient(135deg, hsl(28 80% 45%), hsl(15 70% 30%))";
+  if (kind === "recently-added")
+    return "linear-gradient(135deg, hsl(200 70% 45%), hsl(260 60% 30%))";
+  return "linear-gradient(135deg, hsl(140 50% 40%), hsl(180 55% 25%))";
+}
+
+export function PlaylistsView({
+  onOpenPlaylist,
+  onOpenSmart,
+}: PlaylistsViewProps) {
   const { tracks, playlists, deletePlaylist } = usePlayer();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Playlist | null>(null);
@@ -59,8 +83,49 @@ export function PlaylistsView({ onOpenPlaylist }: PlaylistsViewProps) {
       </div>
 
       <ScrollArea className="flex-1">
+        <div className="p-2 space-y-1">
+          <div className="px-2 pt-1 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium">
+            Smart
+          </div>
+          {SMART_PLAYLISTS.map((s) => {
+            const Icon = smartIcon(s.kind);
+            const items = smartPlaylistTracks(s.kind, tracks);
+            return (
+              <button
+                key={s.kind}
+                type="button"
+                onClick={() => onOpenSmart(s.kind)}
+                className="w-full flex items-center gap-3 p-2 rounded-md hover-elevate active-elevate-2 text-left"
+                data-testid={`smart-playlist-${s.kind}`}
+              >
+                <div
+                  className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0 shadow-sm"
+                  style={{ background: smartGradient(s.kind) }}
+                >
+                  <Icon
+                    className="w-5 h-5 text-white"
+                    strokeWidth={1.75}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">
+                    {s.name}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {items.length}{" "}
+                    {items.length === 1 ? "track" : "tracks"}
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/60 shrink-0" />
+              </button>
+            );
+          })}
+          <div className="px-2 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium">
+            Yours
+          </div>
+        </div>
         {playlists.length === 0 ? (
-          <div className="px-4 py-12 text-center">
+          <div className="px-4 py-8 text-center">
             <div className="text-sm text-muted-foreground mb-4">
               No playlists yet
             </div>
@@ -76,7 +141,7 @@ export function PlaylistsView({ onOpenPlaylist }: PlaylistsViewProps) {
             </Button>
           </div>
         ) : (
-          <ul className="p-2 space-y-1">
+          <ul className="p-2 pt-0 space-y-1">
             <AnimatePresence initial={false}>
               {playlists.map((p, idx) => {
                 const trackCovers = p.trackIds
