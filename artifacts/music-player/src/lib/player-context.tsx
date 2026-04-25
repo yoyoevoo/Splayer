@@ -479,6 +479,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           (tracksRef.current.find((t) => t.id === id)?.playCount ?? 0) + 1,
         lastPlayedAt: now,
       }).catch((e) => console.warn("Failed to save play count", e));
+      // Append timestamped play event for dashboard Top Recents filter
+      try {
+        const LOG_KEY = "play-history";
+        const cutoff = Date.now() - 18 * 86_400_000;
+        const raw = localStorage.getItem(LOG_KEY);
+        const log: Array<{ id: string; ts: number }> = raw ? JSON.parse(raw) : [];
+        log.push({ id, ts: now });
+        localStorage.setItem(LOG_KEY, JSON.stringify(log.filter((e) => e.ts >= cutoff)));
+      } catch {}
     };
     const onPause = () => setIsPlaying(false);
     // Skip ended when crossfade already handled the transition
