@@ -404,6 +404,166 @@ ipcMain.handle("yt-download-video", async (event, url) => {
   }
 });
 
+// ── Helper: run yt-dlp writing output to a file path ─────────────────────────
+function runYtDlpFile(args, onStderr) {
+  return new Promise((resolve, reject) => {
+    const bin  = getYtDlpPath();
+    const proc = spawn(bin, args, { env: { ...process.env } });
+
+    let errText = "";
+    proc.stdout.on("data", () => {});            // discard stdout
+    proc.stderr.on("data", (data) => {
+      const text = data.toString();
+      errText += text;
+      if (onStderr) onStderr(text);
+    });
+    proc.on("error", (e) =>
+      reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
+    );
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        const errLine =
+          errText
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.toLowerCase().includes("error"))
+            .pop() ||
+          errText.trim().split("\n").pop() ||
+          "yt-dlp exited with code " + code;
+        reject(new Error(errLine));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+// ── Helper: merge video + audio with ffmpeg ───────────────────────────────────
+function runFfmpegMerge(videoPath, audioPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffmpeg", [
+      "-y",
+      "-i", videoPath,
+      "-i", audioPath,
+      "-c:v", "copy",
+      "-c:a", "aac",
+      "-map", "0:v:0",
+      "-map", "1:a:0",
+      outputPath,
+    ]);
+
+    let errText = "";
+    proc.stdout.on("data", () => {});
+    proc.stderr.on("data", (d) => { errText += d.toString(); });
+    proc.on("error", (e) =>
+      reject(new Error(`ffmpeg not found or failed to start: ${e.message}`)),
+    );
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error("ffmpeg merge failed: " + errText.slice(-300)));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+// ── IPC: YouTube — download + merge into a single MP4 ────────────────────────
+ipcMain.handle("yt-download-merged", async (event, url) => {
+  try {
+    const videoId = extractVideoId(url);
+    if (!videoId) throw new Error("Invalid YouTube URL");
+
+    const ytUrl    = `https://www.youtube.com/watch?v=${videoId}`;
+    const tmpId    = `${videoId}_${Date.now()}`;
+    const tmpAudio = path.join(os.tmpdir(), `ytdl_audio_${tmpId}`);
+    const tmpVideo = path.join(os.tmpdir(), `ytdl_video_${tmpId}.mp4`);
+    const tmpMerge = path.join(os.tmpdir(), `ytdl_merged_${tmpId}.mp4`);
+
+    // ── Step 1: Get metadata + best audio format ──────────────────────────────
+    const jsonBuf = await runYtDlp([
+      "--dump-json",
+      "--no-playlist",
+      "--no-warnings",
+      ytUrl,
+    ]);
+    const info = JSON.parse(jsonBuf.toString("utf8"));
+
+    const audioFmts = (info.formats || [])
+      .filter((f) => f.vcodec === "none" && f.acodec !== "none" && f.acodec)
+      .sort((a, b) => (b.abr || 0) - (a.abr || 0));
+    const bestFmt    = audioFmts[0];
+    const audioFmtId = bestFmt ? String(bestFmt.format_id) : "bestaudio";
+    const audioExt   = bestFmt?.ext || "webm";
+
+    const meta = {
+      title:        info.title    || "Unknown",
+      author:       info.uploader || info.channel || "Unknown",
+      durationSecs: Math.round(info.duration || 0),
+      thumbnailUrl: info.thumbnail || null,
+    };
+
+    // ── Step 2: Download audio to temp file ───────────────────────────────────
+    const tmpAudioWithExt = `${tmpAudio}.${audioExt}`;
+    event.sender.send("yt-progress", { percent: 0, downloaded: 0, total: 100 });
+
+    await runYtDlpFile(
+      [
+        "-f", audioFmtId,
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "-o", tmpAudioWithExt,
+        ytUrl,
+      ],
+      (stderrLine) => {
+        const pct = parseYtDlpProgress(stderrLine);
+        if (pct !== null) {
+          event.sender.send("yt-progress", { percent: pct, downloaded: pct, total: 100 });
+        }
+      },
+    );
+    event.sender.send("yt-progress", { percent: 100, downloaded: 100, total: 100 });
+
+    // ── Step 3: Download video (video-only stream) to temp file ───────────────
+    event.sender.send("yt-progress-video", { percent: 0, downloaded: 0, total: 100 });
+
+    await runYtDlpFile(
+      [
+        "-f", "bestvideo[ext=mp4]/bestvideo[height<=1080]/bestvideo",
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "-o", tmpVideo,
+        ytUrl,
+      ],
+      (stderrLine) => {
+        const pct = parseYtDlpProgress(stderrLine);
+        if (pct !== null) {
+          event.sender.send("yt-progress-video", { percent: pct, downloaded: pct, total: 100 });
+        }
+      },
+    );
+    event.sender.send("yt-progress-video", { percent: 100, downloaded: 100, total: 100 });
+
+    // ── Step 4: Merge with ffmpeg ─────────────────────────────────────────────
+    event.sender.send("yt-progress-merge", { percent: 0 });
+    await runFfmpegMerge(tmpVideo, tmpAudioWithExt, tmpMerge);
+    event.sender.send("yt-progress-merge", { percent: 100 });
+
+    // ── Step 5: Read merged bytes + clean up temp files ───────────────────────
+    const mergedBuf = await fs.readFile(tmpMerge);
+
+    for (const f of [tmpAudioWithExt, tmpVideo, tmpMerge]) {
+      fs.unlink(f).catch(() => {});
+    }
+
+    return { bytes: new Uint8Array(mergedBuf), mimeType: "video/mp4", ext: "mp4", ...meta };
+  } catch (err) {
+    return { error: String(err.message ?? err) };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => {

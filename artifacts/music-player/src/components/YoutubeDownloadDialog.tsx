@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 type Mode        = "search" | "url";
 type PreviewMode = "audio" | "video";
-type DownloadType = "audio" | "video" | "both";
+type DownloadType = "audio" | "video" | "merged";
 type Stage =
   | "idle"
   | "searching"
@@ -118,9 +118,9 @@ function ProgressBar({
 // ── Download button — uses Radix Popover so it nests correctly inside Dialog ──
 
 const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
-  { type: "audio", icon: "🎵", label: "Audio only (MP3)" },
-  { type: "video", icon: "🎬", label: "Video only (MP4)" },
-  { type: "both",  icon: "📦", label: "Both (MP3 + MP4)" },
+  { type: "audio",  icon: "🎵", label: "Audio only (MP3)"              },
+  { type: "video",  icon: "🎬", label: "Video only (MP4)"              },
+  { type: "merged", icon: "📦", label: "Merged (MP4 + audio combined)" },
 ];
 
 function DownloadButton({
@@ -199,13 +199,16 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
   // Shared download state
   const [downloadInfo,   setDownloadInfo]   = useState<VideoInfo | null>(null);
-  const [dlType,         setDlType]         = useState<DownloadType>("both");
+  const [dlType,         setDlType]         = useState<DownloadType>("merged");
   const [progressAudio,  setProgressAudio]  = useState(0);
   const [progressVideo,  setProgressVideo]  = useState(0);
+  const [progressMerge,  setProgressMerge]  = useState(0);
   const [audioDone,      setAudioDone]      = useState(false);
   const [videoDone,      setVideoDone]      = useState(false);
+  const [mergeDone,      setMergeDone]      = useState(false);
   const [audioError,     setAudioError]     = useState(false);
   const [videoError,     setVideoError]     = useState(false);
+  const [mergeError,     setMergeError]     = useState(false);
   const [errorMsg,       setErrorMsg]       = useState("");
 
   // Port of the local embed proxy server
@@ -213,6 +216,7 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
   const cleanupAudioRef = useRef<(() => void) | null>(null);
   const cleanupVideoRef = useRef<(() => void) | null>(null);
+  const cleanupMergeRef = useRef<(() => void) | null>(null);
   const api             = window.electronAPI;
 
   // Fetch embed server port once
@@ -235,18 +239,23 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       setUrl("");
       setUrlInfo(null);
       setDownloadInfo(null);
-      setDlType("both");
+      setDlType("merged");
       setProgressAudio(0);
       setProgressVideo(0);
+      setProgressMerge(0);
       setAudioDone(false);
       setVideoDone(false);
+      setMergeDone(false);
       setAudioError(false);
       setVideoError(false);
+      setMergeError(false);
       setErrorMsg("");
       cleanupAudioRef.current?.();
       cleanupAudioRef.current = null;
       cleanupVideoRef.current?.();
       cleanupVideoRef.current = null;
+      cleanupMergeRef.current?.();
+      cleanupMergeRef.current = null;
     }
   }, [open]);
 
@@ -296,28 +305,102 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     info: VideoInfo,
     type: DownloadType,
   ) => {
-    if (!api?.ytDownload || !api?.ytDownloadVideo) return;
-
     setDownloadInfo(info);
     setDlType(type);
     setStage("downloading");
     setProgressAudio(0);
     setProgressVideo(0);
+    setProgressMerge(0);
     setAudioDone(false);
     setVideoDone(false);
+    setMergeDone(false);
     setAudioError(false);
     setVideoError(false);
+    setMergeError(false);
 
-    // Shared base filename — same stem for both audio and video so the player
-    // can auto-match the companion file (NowPlaying looks for stem + ".mp4").
     const baseName     = sanitizeFilename(info.title);
     const downloadsDir = localStorage.getItem("settings-downloads-path") ?? "";
     const videosDir    = localStorage.getItem("settings-videos-path")    ?? "";
 
-    const doAudio = type === "audio" || type === "both";
-    const doVideo = type === "video" || type === "both";
+    // ── Merged: download audio + video then ffmpeg-merge into one MP4 ─────────
+    if (type === "merged") {
+      if (!api?.ytDownloadMerged) {
+        setMergeError(true);
+        setErrorMsg("Merged download not available.");
+        setStage("error");
+        return;
+      }
 
-    // Subscribe to progress events
+      const cleanupA = api.onYtProgress(({ percent }) => setProgressAudio(percent));
+      const cleanupV = api.onYtProgressVideo
+        ? api.onYtProgressVideo(({ percent }) => setProgressVideo(percent))
+        : () => {};
+      const cleanupM = api.onYtProgressMerge
+        ? api.onYtProgressMerge(({ percent }) => setProgressMerge(percent))
+        : () => {};
+      cleanupAudioRef.current = cleanupA;
+      cleanupVideoRef.current = cleanupV;
+      cleanupMergeRef.current = cleanupM;
+
+      const result = await api.ytDownloadMerged(videoUrl);
+
+      cleanupA(); cleanupV(); cleanupM();
+      cleanupAudioRef.current = null;
+      cleanupVideoRef.current = null;
+      cleanupMergeRef.current = null;
+
+      if ("error" in result) {
+        setAudioError(true);
+        setVideoError(true);
+        setMergeError(true);
+        setErrorMsg(result.error);
+        setDownloadingId(null);
+        setStage("error");
+        return;
+      }
+
+      setAudioDone(true);   setProgressAudio(100);
+      setVideoDone(true);   setProgressVideo(100);
+      setMergeDone(true);   setProgressMerge(100);
+
+      const mergedFilename = `${baseName}.mp4`;
+      const mergedBytes    = new Uint8Array(result.bytes);
+      const blob           = new Blob([mergedBytes], { type: "video/mp4" });
+      const file           = new File([blob], mergedFilename, { type: "video/mp4" });
+
+      if (videosDir && api?.writeFile) {
+        await api.writeFile(`${videosDir}/${mergedFilename}`, mergedBytes);
+      }
+
+      await addFiles([file]);
+      await updateTrackInfo(file.name + "-" + file.size, {
+        title:  result.title,
+        artist: result.author,
+      });
+
+      addDownloadRecord({
+        id:           `merged-${Date.now()}`,
+        trackId:      `${file.name}-${file.size}`,
+        title:        result.title,
+        artist:       result.author,
+        ext:          "mp4",
+        fileSize:     mergedBytes.byteLength,
+        filePath:     videosDir ? `${videosDir}/${mergedFilename}` : null,
+        downloadedAt: Date.now(),
+        type:         "video",
+      });
+
+      setDownloadingId(null);
+      setStage("done");
+      return;
+    }
+
+    // ── Audio-only or Video-only ───────────────────────────────────────────────
+    if (!api?.ytDownload || !api?.ytDownloadVideo) return;
+
+    const doAudio = type === "audio";
+    const doVideo = type === "video";
+
     const cleanupA = doAudio
       ? api.onYtProgress(({ percent }) => setProgressAudio(percent))
       : () => {};
@@ -327,7 +410,6 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     cleanupAudioRef.current = cleanupA;
     cleanupVideoRef.current = cleanupV;
 
-    // Run requested downloads
     const [audioResult, videoResult] = await Promise.all([
       doAudio ? api.ytDownload(videoUrl) : Promise.resolve(null),
       doVideo ? api.ytDownloadVideo(videoUrl) : Promise.resolve(null),
@@ -352,19 +434,16 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         const blob          = new Blob([audioBytes], { type: audioResult.mimeType });
         const file          = new File([blob], audioFilename, { type: audioResult.mimeType });
 
-        // Save to the configured Downloads folder on disk
         if (downloadsDir && api?.writeFile) {
           await api.writeFile(`${downloadsDir}/${audioFilename}`, audioBytes);
         }
 
-        // Add to the in-app library so it appears in the song list immediately
         await addFiles([file]);
         await updateTrackInfo(file.name + "-" + file.size, {
           title:  audioResult.title,
           artist: audioResult.author,
         });
 
-        // Record in download history
         addDownloadRecord({
           id:           `audio-${Date.now()}`,
           trackId:      `${file.name}-${file.size}`,
@@ -388,27 +467,21 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
         setVideoDone(true);
         setProgressVideo(100);
 
-        // Always save video as .mp4 — same base name as the audio file so the
-        // player's companion-video matching (stem + ".mp4") works automatically.
         const videoFilename = `${baseName}.mp4`;
         const videoBytes    = new Uint8Array(videoResult.bytes);
         const blob          = new Blob([videoBytes], { type: "video/mp4" });
         const file          = new File([blob], videoFilename, { type: "video/mp4" });
 
-        // Save to the configured Videos folder on disk
         if (videosDir && api?.writeFile) {
           await api.writeFile(`${videosDir}/${videoFilename}`, videoBytes);
         }
 
-        // Add to the library — this is what lets NowPlaying find the matching
-        // video track by filename when the audio track is playing.
         await addFiles([file]);
         await updateTrackInfo(file.name + "-" + file.size, {
           title:  videoResult.title,
           artist: videoResult.author,
         });
 
-        // Record in download history
         addDownloadRecord({
           id:           `video-${Date.now()}`,
           trackId:      `${file.name}-${file.size}`,
@@ -437,12 +510,9 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
 
   // ── Derived success message ───────────────────────────────────────────────
   function successMessage(): string {
-    if (dlType === "audio") return "✅ Audio downloaded";
-    if (dlType === "video") return "✅ Video downloaded";
-    // both
-    if (audioDone && videoDone) return "✅ Audio and Video downloaded";
-    if (audioDone) return "✅ Audio downloaded · ⚠️ MP4 failed";
-    if (videoDone) return "✅ Video downloaded · ⚠️ MP3 failed";
+    if (dlType === "audio")  return "✅ Audio downloaded";
+    if (dlType === "video")  return "✅ Video downloaded";
+    if (dlType === "merged") return mergeDone ? "✅ Merged MP4 saved" : "⚠️ Merge failed";
     return "";
   }
 
@@ -499,20 +569,28 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
             <div className="space-y-3">
-              {(dlType === "audio" || dlType === "both") && (
+              {(dlType === "audio" || dlType === "merged") && (
                 <ProgressBar
-                  label="MP3 Audio"
+                  label={dlType === "merged" ? "Downloading audio..." : "MP3 Audio"}
                   percent={progressAudio}
                   done={audioDone}
                   error={audioError}
                 />
               )}
-              {(dlType === "video" || dlType === "both") && (
+              {(dlType === "video" || dlType === "merged") && (
                 <ProgressBar
-                  label="MP4 Video"
+                  label={dlType === "merged" ? "Downloading video..." : "MP4 Video"}
                   percent={progressVideo}
                   done={videoDone}
                   error={videoError}
+                />
+              )}
+              {dlType === "merged" && (
+                <ProgressBar
+                  label={mergeDone ? "✅ Done!" : "Merging files..."}
+                  percent={progressMerge}
+                  done={mergeDone}
+                  error={mergeError}
                 />
               )}
             </div>

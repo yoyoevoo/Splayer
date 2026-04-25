@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Download video (MP4) from a YouTube URL. Returns bytes + metadata. */
   ytDownloadVideo: (url) => ipcRenderer.invoke("yt-download-video", url),
 
+  /** Download audio + video then merge into a single MP4 via ffmpeg. */
+  ytDownloadMerged: (url) => ipcRenderer.invoke("yt-download-merged", url),
+
   /** Returns the port of the local YouTube embed proxy server. */
   getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
 
@@ -42,5 +45,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on("yt-progress-video", handler);
     return () => ipcRenderer.removeListener("yt-progress-video", handler);
+  },
+
+  /**
+   * Subscribe to ffmpeg merge progress events.
+   * Returns an unsubscribe function — call it when done.
+   */
+  onYtProgressMerge: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("yt-progress-merge", handler);
+    return () => ipcRenderer.removeListener("yt-progress-merge", handler);
   },
 });

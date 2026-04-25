@@ -47,6 +47,9 @@ declare global {
       /** Download video (MP4) from a YouTube URL. */
       ytDownloadVideo: (url: string) => Promise<YtDownloadResult | { error: string }>;
 
+      /** Download audio + video then merge into a single MP4 via ffmpeg. */
+      ytDownloadMerged: (url: string) => Promise<YtDownloadResult | { error: string }>;
+
       /** Returns the port of the local YouTube embed proxy server. */
       getEmbedPort: () => Promise<number>;
 
@@ -64,6 +67,14 @@ declare global {
        */
       onYtProgressVideo: (
         cb: (data: { downloaded: number; total: number; percent: number }) => void,
+      ) => () => void;
+
+      /**
+       * Subscribe to ffmpeg merge-progress events.
+       * Returns an unsubscribe function.
+       */
+      onYtProgressMerge: (
+        cb: (data: { percent: number }) => void,
       ) => () => void;
     };
   }
