@@ -25,8 +25,6 @@ import {
 } from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
 import { DeleteTrackDialog } from "./DeleteTrackDialog";
-import { NewPlaylistDialog } from "./NewPlaylistDialog";
-import { AddToPlaylistContextSub } from "./AddToPlaylistContextSub";
 import {
   trackCoverUrl,
   smartPlaylistTracks,
@@ -84,11 +82,10 @@ function emptyMessage(kind: SmartPlaylistKind): string {
 }
 
 export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
-  const { tracks, playlists, currentTrack, isPlaying, playFromList, toggleLike, deleteTrackWithFile, addTracksToPlaylist } =
+  const { tracks, playlists, currentTrack, isPlaying, playFromList, toggleLike, deleteTrackWithFile } =
     usePlayer();
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
 
   const meta = SMART_PLAYLISTS.find((s) => s.kind === kind);
   const Icon = smartIcon(kind);
@@ -300,13 +297,6 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                           Play
                         </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <AddToPlaylistContextSub
-                          trackId={t.id}
-                          playlists={playlists}
-                          addTracksToPlaylist={addTracksToPlaylist}
-                          onCreateNew={() => setNewPlaylistFor(t.id)}
-                        />
-                        <ContextMenuSeparator />
                         <ContextMenuItem
                           onClick={() => setDeleteTarget(t)}
                           className="text-destructive focus:text-destructive"
@@ -333,14 +323,6 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
         open={!!deleteTarget}
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
-      />
-      <NewPlaylistDialog
-        open={newPlaylistFor !== null}
-        onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-        onCreated={async (id) => {
-          if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-          setNewPlaylistFor(null);
-        }}
       />
     </div>
   );

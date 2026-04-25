@@ -28,7 +28,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { AddToPlaylistContextSub } from "./AddToPlaylistContextSub";
 import { usePlayer } from "@/lib/player-context";
 import {
   trackCoverUrl,
@@ -62,7 +61,6 @@ export function PlaylistDetailView({
     deletePlaylist,
     setPlaylistCover,
     removeTrackFromPlaylist,
-    addTracksToPlaylist,
     deleteTrackWithFile,
     toggleLike,
   } = usePlayer();
@@ -70,7 +68,6 @@ export function PlaylistDetailView({
   const playlist = playlists.find((p) => p.id === playlistId);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -381,13 +378,6 @@ export function PlaylistDetailView({
                           Play
                         </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <AddToPlaylistContextSub
-                          trackId={t.id}
-                          playlists={playlists.filter((p) => p.id !== playlist.id)}
-                          addTracksToPlaylist={addTracksToPlaylist}
-                          onCreateNew={() => setNewPlaylistFor(t.id)}
-                        />
-                        <ContextMenuSeparator />
                         <ContextMenuItem
                           onClick={() =>
                             removeTrackFromPlaylist(playlist.id, t.id)
@@ -446,14 +436,6 @@ export function PlaylistDetailView({
         open={!!deleteTarget}
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
-      />
-      <NewPlaylistDialog
-        open={newPlaylistFor !== null}
-        onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-        onCreated={async (id) => {
-          if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-          setNewPlaylistFor(null);
-        }}
       />
     </div>
   );

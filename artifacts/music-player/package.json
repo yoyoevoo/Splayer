@@ -29,6 +29,10 @@
       {
         "from": "resources/yt-dlp",
         "to": "yt-dlp"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "linux": {

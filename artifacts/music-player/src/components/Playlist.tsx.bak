@@ -51,7 +51,6 @@ import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
-import { AddToPlaylistContextSub } from "./AddToPlaylistContextSub";
 import { EqualizerBars } from "./EqualizerBars";
 import { DeleteTrackDialog } from "./DeleteTrackDialog";
 import type { SmartPlaylistKind } from "@/lib/types";
@@ -421,13 +420,6 @@ function LibraryView() {
                         <Play className="w-4 h-4 mr-2" />
                         Play
                       </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <AddToPlaylistContextSub
-                        trackId={t.id}
-                        playlists={playlists}
-                        addTracksToPlaylist={addTracksToPlaylist}
-                        onCreateNew={() => setNewPlaylistFor(t.id)}
-                      />
                       <ContextMenuSeparator />
                       <ContextMenuItem
                         onClick={() => removeTrack(t.id)}

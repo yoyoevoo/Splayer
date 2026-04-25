@@ -34,30 +34,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Returns the port of the local YouTube embed proxy server. */
   getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
 
-  /** Set whether closing the window minimizes to tray or quits the app. */
-  setCloseBehavior: (behavior) =>
-    ipcRenderer.invoke("set-close-behavior", behavior),
-
-  /**
-   * Push current playback state to the main process so the tray menu
-   * and tooltip stay up-to-date (fire-and-forget).
-   */
-  updateTrayState: (state) =>
-    ipcRenderer.send("update-tray-state", state),
-
-  /** Bring the hidden window back to the foreground. */
-  showWindow: () => ipcRenderer.invoke("show-window"),
-
-  /**
-   * Subscribe to tray control events (play-pause / next / prev).
-   * Returns an unsubscribe function — call it in cleanup.
-   */
-  onTrayAction: (cb) => {
-    const handler = (_e, action) => cb(action);
-    ipcRenderer.on("tray-action", handler);
-    return () => ipcRenderer.removeListener("tray-action", handler);
-  },
-
   /**
    * Subscribe to audio download progress events.
    * Returns an unsubscribe function — call it when done.

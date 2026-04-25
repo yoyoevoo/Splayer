@@ -18,13 +18,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
 import { DeleteTrackDialog } from "./DeleteTrackDialog";
-import { NewPlaylistDialog } from "./NewPlaylistDialog";
-import { AddToPlaylistContextSub } from "./AddToPlaylistContextSub";
 import {
   SMART_PLAYLISTS,
   playlistTracks,
@@ -170,55 +167,35 @@ function TrackCard({
   onClick: () => void;
   onDelete?: (track: Track) => void;
 }) {
-  const { playlists, addTracksToPlaylist } = usePlayer();
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const cover = trackCoverUrl(track);
   return (
-    <>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button onClick={onClick} className="shrink-0 w-[118px] text-left group focus:outline-none">
-            <div className="w-[118px] h-[118px] rounded-xl overflow-hidden mb-2 shadow-md group-hover:shadow-xl group-hover:scale-[1.03] transition-all duration-200">
-              <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
-            </div>
-            <p className="text-xs font-medium truncate text-foreground leading-tight">{track.title}</p>
-            <p className="text-[11px] text-muted-foreground truncate mt-0.5">{track.artist || "Unknown"}</p>
-            <p className="text-[10px] text-primary/80 mt-0.5">{sub}</p>
-          </button>
-        </ContextMenuTrigger>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button onClick={onClick} className="shrink-0 w-[118px] text-left group focus:outline-none">
+          <div className="w-[118px] h-[118px] rounded-xl overflow-hidden mb-2 shadow-md group-hover:shadow-xl group-hover:scale-[1.03] transition-all duration-200">
+            <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+          </div>
+          <p className="text-xs font-medium truncate text-foreground leading-tight">{track.title}</p>
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{track.artist || "Unknown"}</p>
+          <p className="text-[10px] text-primary/80 mt-0.5">{sub}</p>
+        </button>
+      </ContextMenuTrigger>
+      {onDelete && (
         <ContextMenuContent className="w-52">
           <ContextMenuItem onClick={onClick}>
             <Play className="w-4 h-4 mr-2" />
             Play
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <AddToPlaylistContextSub
-            trackId={track.id}
-            playlists={playlists}
-            addTracksToPlaylist={addTracksToPlaylist}
-            onCreateNew={() => setNewPlaylistFor(track.id)}
-          />
-          <ContextMenuSeparator />
-          {onDelete && (
-            <ContextMenuItem
-              onClick={() => onDelete(track)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete file from disk
-            </ContextMenuItem>
-          )}
+          <ContextMenuItem
+            onClick={() => onDelete(track)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete file from disk
+          </ContextMenuItem>
         </ContextMenuContent>
-      </ContextMenu>
-      <NewPlaylistDialog
-        open={newPlaylistFor !== null}
-        onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-        onCreated={async (id) => {
-          if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-          setNewPlaylistFor(null);
-        }}
-      />
-    </>
+      )}
+    </ContextMenu>
   );
 }
 
@@ -277,68 +254,48 @@ function TopRecentRow({
   onClick: () => void;
   onDelete?: (track: Track) => void;
 }) {
-  const { playlists, addTracksToPlaylist } = usePlayer();
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const cover = trackCoverUrl(track);
   return (
-    <>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <button
-            onClick={onClick}
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
-          >
-            <span className="text-xs tabular-nums text-muted-foreground/50 w-4 shrink-0 text-right">
-              {rank}
-            </span>
-            <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-              <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
-                {track.title}
-              </p>
-              <p className="text-xs text-muted-foreground truncate">{track.artist || "Unknown"}</p>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <span className="text-xs font-bold text-primary tabular-nums">{count}</span>
-              <span className="text-[10px] text-muted-foreground">plays</span>
-            </div>
-          </button>
-        </ContextMenuTrigger>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          onClick={onClick}
+          className="flex items-center gap-3 w-full px-3 py-2 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
+        >
+          <span className="text-xs tabular-nums text-muted-foreground/50 w-4 shrink-0 text-right">
+            {rank}
+          </span>
+          <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
+            <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
+              {track.title}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">{track.artist || "Unknown"}</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs font-bold text-primary tabular-nums">{count}</span>
+            <span className="text-[10px] text-muted-foreground">plays</span>
+          </div>
+        </button>
+      </ContextMenuTrigger>
+      {onDelete && (
         <ContextMenuContent className="w-52">
           <ContextMenuItem onClick={onClick}>
             <Play className="w-4 h-4 mr-2" />
             Play
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <AddToPlaylistContextSub
-            trackId={track.id}
-            playlists={playlists}
-            addTracksToPlaylist={addTracksToPlaylist}
-            onCreateNew={() => setNewPlaylistFor(track.id)}
-          />
-          <ContextMenuSeparator />
-          {onDelete && (
-            <ContextMenuItem
-              onClick={() => onDelete(track)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete file from disk
-            </ContextMenuItem>
-          )}
+          <ContextMenuItem
+            onClick={() => onDelete(track)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete file from disk
+          </ContextMenuItem>
         </ContextMenuContent>
-      </ContextMenu>
-      <NewPlaylistDialog
-        open={newPlaylistFor !== null}
-        onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-        onCreated={async (id) => {
-          if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-          setNewPlaylistFor(null);
-        }}
-      />
-    </>
+      )}
+    </ContextMenu>
   );
 }
 
@@ -355,8 +312,6 @@ function AlbumDetailView({
   play: (tracks: Track[], idx: number) => void;
   onDelete?: (track: Track) => void;
 }) {
-  const { playlists, addTracksToPlaylist } = usePlayer();
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const cover = group.tracks.map((t) => trackCoverUrl(t)).find(Boolean);
   const totalDur = group.tracks.reduce((s, t) => s + (t.duration || 0), 0);
   const sorted = useMemo(
@@ -365,7 +320,6 @@ function AlbumDetailView({
   );
 
   return (
-    <>
     <ScrollArea className="flex-1 w-full">
       <div className="px-6 py-5 max-w-5xl">
         {/* Back */}
@@ -425,45 +379,26 @@ function AlbumDetailView({
                   </span>
                 </button>
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-52">
-                <ContextMenuItem onClick={() => play(sorted, i)}>
-                  <Play className="w-4 h-4 mr-2" />
-                  Play
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <AddToPlaylistContextSub
-                  trackId={t.id}
-                  playlists={playlists}
-                  addTracksToPlaylist={addTracksToPlaylist}
-                  onCreateNew={() => setNewPlaylistFor(t.id)}
-                />
-                {onDelete && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
-                      onClick={() => onDelete(t)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete file from disk
-                    </ContextMenuItem>
-                  </>
-                )}
-              </ContextMenuContent>
+              {onDelete && (
+                <ContextMenuContent className="w-52">
+                  <ContextMenuItem onClick={() => play(sorted, i)}>
+                    <Play className="w-4 h-4 mr-2" />
+                    Play
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => onDelete(t)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete file from disk
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
             </ContextMenu>
           ))}
         </div>
       </div>
     </ScrollArea>
-    <NewPlaylistDialog
-      open={newPlaylistFor !== null}
-      onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-      onCreated={async (id) => {
-        if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-        setNewPlaylistFor(null);
-      }}
-    />
-    </>
   );
 }
 
@@ -480,8 +415,6 @@ function ArtistDetailView({
   play: (tracks: Track[], idx: number) => void;
   onDelete?: (track: Track) => void;
 }) {
-  const { playlists, addTracksToPlaylist } = usePlayer();
-  const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const cover = group.tracks.map((t) => trackCoverUrl(t)).find(Boolean);
   const sorted = useMemo(
     () => [...group.tracks].sort((a, b) => a.title.localeCompare(b.title)),
@@ -489,7 +422,6 @@ function ArtistDetailView({
   );
 
   return (
-    <>
     <ScrollArea className="flex-1 w-full">
       <div className="px-6 py-5 max-w-5xl">
         {/* Back */}
@@ -545,45 +477,26 @@ function ArtistDetailView({
                   </span>
                 </button>
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-52">
-                <ContextMenuItem onClick={() => play(sorted, i)}>
-                  <Play className="w-4 h-4 mr-2" />
-                  Play
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <AddToPlaylistContextSub
-                  trackId={t.id}
-                  playlists={playlists}
-                  addTracksToPlaylist={addTracksToPlaylist}
-                  onCreateNew={() => setNewPlaylistFor(t.id)}
-                />
-                {onDelete && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
-                      onClick={() => onDelete(t)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete file from disk
-                    </ContextMenuItem>
-                  </>
-                )}
-              </ContextMenuContent>
+              {onDelete && (
+                <ContextMenuContent className="w-52">
+                  <ContextMenuItem onClick={() => play(sorted, i)}>
+                    <Play className="w-4 h-4 mr-2" />
+                    Play
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => onDelete(t)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete file from disk
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
             </ContextMenu>
           ))}
         </div>
       </div>
     </ScrollArea>
-    <NewPlaylistDialog
-      open={newPlaylistFor !== null}
-      onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
-      onCreated={async (id) => {
-        if (newPlaylistFor) await addTracksToPlaylist(id, [newPlaylistFor]);
-        setNewPlaylistFor(null);
-      }}
-    />
-    </>
   );
 }
 

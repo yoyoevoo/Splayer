@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Download, FolderOpen, Monitor, Settings } from "lucide-react";
+import { Download, FolderOpen, Settings } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -14,10 +14,9 @@ import { cn } from "@/lib/utils";
 // ── localStorage keys ────────────────────────────────────────────────────────
 
 const LS = {
-  musicLibrary:  "settings-music-library-path",
-  downloads:     "settings-downloads-path",
-  videos:        "settings-videos-path",
-  closeBehavior: "settings-close-behavior",
+  musicLibrary: "settings-music-library-path",
+  downloads:    "settings-downloads-path",
+  videos:       "settings-videos-path",
 } as const;
 
 function readPath(key: string): string {
@@ -110,89 +109,9 @@ function FolderRow({ label, description, lsKey }: FolderRowProps) {
   );
 }
 
-// ── CloseBehaviorSection ──────────────────────────────────────────────────────
-
-type CloseBehavior = "tray" | "close";
-
-const BEHAVIOR_OPTS: { value: CloseBehavior; label: string; desc: string }[] = [
-  {
-    value: "tray",
-    label: "Minimize to system tray",
-    desc:  "The app keeps running in the background and music keeps playing. Click the tray icon to reopen.",
-  },
-  {
-    value: "close",
-    label: "Close fully",
-    desc:  "The app shuts down completely and music stops.",
-  },
-];
-
-function CloseBehaviorSection() {
-  const [behavior, setBehavior] = useState<CloseBehavior>(() => {
-    try { return (localStorage.getItem(LS.closeBehavior) ?? "tray") as CloseBehavior; }
-    catch { return "tray"; }
-  });
-
-  function select(v: CloseBehavior) {
-    setBehavior(v);
-    try { localStorage.setItem(LS.closeBehavior, v); } catch {}
-    window.electronAPI?.setCloseBehavior?.(v);
-  }
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-sm font-medium text-foreground">When you click the ✕ button</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Choose what happens when you close the app window.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        {BEHAVIOR_OPTS.map((opt) => {
-          const active = behavior === opt.value;
-          return (
-            <button
-              key={opt.value}
-              onClick={() => select(opt.value)}
-              className={cn(
-                "w-full flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
-                active
-                  ? "border-primary bg-primary/10"
-                  : "border-border bg-card hover:border-primary/40",
-              )}
-            >
-              <div
-                className={cn(
-                  "w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 transition-colors",
-                  active
-                    ? "border-primary bg-primary"
-                    : "border-muted-foreground",
-                )}
-              />
-              <div className="min-w-0">
-                <p className={cn("text-sm font-medium", active ? "text-primary" : "text-foreground")}>
-                  {opt.label}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {!window.electronAPI && (
-        <p className="text-xs text-muted-foreground/60 italic">
-          This setting only applies in the desktop app.
-        </p>
-      )}
-    </div>
-  );
-}
-
 // ── SettingsDialog ────────────────────────────────────────────────────────────
 
-type Tab = "folders" | "downloads" | "behavior";
+type Tab = "folders" | "downloads";
 
 interface Props {
   open: boolean;
@@ -238,18 +157,6 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <Download className="w-3.5 h-3.5" />
             Downloads
           </button>
-          <button
-            onClick={() => setTab("behavior")}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
-              tab === "behavior"
-                ? "bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            Behavior
-          </button>
         </div>
 
         {/* ── Folders tab ── */}
@@ -286,16 +193,6 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
               Download History
             </p>
             <DownloadsView />
-          </div>
-        )}
-
-        {/* ── Behavior tab ── */}
-        {tab === "behavior" && (
-          <div className="py-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-              App Behavior
-            </p>
-            <CloseBehaviorSection />
           </div>
         )}
       </DialogContent>

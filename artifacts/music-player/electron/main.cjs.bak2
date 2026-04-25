@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
 const http = require("http");
@@ -7,85 +7,6 @@ const os = require("os");
 app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("disable-setuid-sandbox");
-
-// ── Tray & close-behavior state ───────────────────────────────────────────────
-let mainWindow   = null;
-let tray         = null;
-let closeBehavior = "tray"; // "tray" | "close"
-let isQuitting   = false;
-let nowPlayingState = { title: "Nothing playing", artist: "", isPlaying: false };
-
-function getTrayIconPath() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "icon.png")
-    : path.join(__dirname, "..", "build", "icon.png");
-}
-
-function buildTrayMenu() {
-  const { title, artist, isPlaying } = nowPlayingState;
-  const trackLabel = (title && title !== "Nothing playing")
-    ? `${title}${artist ? ` — ${artist}` : ""}`
-    : "Nothing playing";
-  const truncated = trackLabel.length > 45
-    ? trackLabel.slice(0, 45) + "…"
-    : trackLabel;
-
-  return Menu.buildFromTemplate([
-    {
-      label: "⏮  Previous",
-      click: () => { if (mainWindow) mainWindow.webContents.send("tray-action", "prev"); },
-    },
-    {
-      label: isPlaying ? "⏸  Pause" : "▶  Play",
-      click: () => { if (mainWindow) mainWindow.webContents.send("tray-action", "play-pause"); },
-    },
-    {
-      label: "⏭  Next",
-      click: () => { if (mainWindow) mainWindow.webContents.send("tray-action", "next"); },
-    },
-    { type: "separator" },
-    {
-      label: `🎵 ${truncated}`,
-      enabled: false,
-    },
-    { type: "separator" },
-    {
-      label: "🖥  Open Music Player",
-      click: () => {
-        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-      },
-    },
-    {
-      label: "❌ Quit",
-      click: () => { isQuitting = true; app.quit(); },
-    },
-  ]);
-}
-
-function updateTray() {
-  if (!tray) return;
-  const { title, artist } = nowPlayingState;
-  const tip = (title && title !== "Nothing playing")
-    ? `🎵 ${title}${artist ? ` • ${artist}` : ""}`
-    : "Music Player";
-  tray.setToolTip(tip);
-  tray.setContextMenu(buildTrayMenu());
-}
-
-function createTray() {
-  try {
-    const iconPath = getTrayIconPath();
-    const icon = nativeImage.createFromPath(iconPath);
-    tray = new Tray(icon);
-    tray.setToolTip("Music Player");
-    tray.setContextMenu(buildTrayMenu());
-    tray.on("double-click", () => {
-      if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-    });
-  } catch (e) {
-    console.error("[Tray] Failed to create system tray:", e.message);
-  }
-}
 
 // ── Local YouTube embed server ────────────────────────────────────────────────
 // Electron loads from file://, so YouTube's iframe embed blocks with Error 153
@@ -212,16 +133,7 @@ function createWindow() {
     },
   });
 
-  mainWindow = win;
   Menu.setApplicationMenu(null);
-
-  // Minimize-to-tray / close fully depending on user setting
-  win.on("close", (e) => {
-    if (!isQuitting && closeBehavior === "tray") {
-      e.preventDefault();
-      win.hide();
-    }
-  });
 
   const indexPath = path.join(__dirname, "..", "dist", "public", "index.html");
   win.loadFile(indexPath);
@@ -734,37 +646,13 @@ ipcMain.handle("delete-file", async (_event, filePath) => {
   }
 });
 
-// ── IPC: Tray & close-behavior ────────────────────────────────────────────────
-ipcMain.handle("set-close-behavior", (_event, behavior) => {
-  if (behavior === "tray" || behavior === "close") {
-    closeBehavior = behavior;
-  }
-});
-
-ipcMain.on("update-tray-state", (_event, state) => {
-  nowPlayingState = {
-    title:     String(state.title     ?? "Nothing playing"),
-    artist:    String(state.artist    ?? ""),
-    isPlaying: Boolean(state.isPlaying),
-  };
-  updateTray();
-});
-
-ipcMain.handle("show-window", () => {
-  if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-});
-
 app.whenReady().then(() => {
   createWindow();
-  createTray();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    isQuitting = true;
-    app.quit();
-  }
+  if (process.platform !== "darwin") app.quit();
 });

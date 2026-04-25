@@ -68,21 +68,6 @@ declare global {
       /** Permanently delete a file from disk. */
       deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 
-      /** Set whether closing the window minimizes to tray ("tray") or quits ("close"). */
-      setCloseBehavior: (behavior: "tray" | "close") => Promise<void>;
-
-      /** Push playback state to the main process so the tray stays in sync. */
-      updateTrayState: (state: { title: string; artist: string; isPlaying: boolean }) => void;
-
-      /** Bring the hidden window back to the foreground. */
-      showWindow: () => Promise<void>;
-
-      /**
-       * Subscribe to tray media-control events.
-       * Returns an unsubscribe function.
-       */
-      onTrayAction: (cb: (action: "play-pause" | "next" | "prev") => void) => () => void;
-
       /**
        * Subscribe to audio download-progress events.
        * Returns an unsubscribe function.
