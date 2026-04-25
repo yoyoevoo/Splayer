@@ -5,12 +5,15 @@ interface Props {
   videoUrl: string;
   title: string;
   onClose: () => void;
+  /** Mute the video element — used when the merged MP4 already plays audio
+   *  through the main player so we don't get double audio. */
+  muted?: boolean;
 }
 
 const DEFAULT_W = 480;
 const DEFAULT_H = 300;
 
-export function FloatingVideoPlayer({ videoUrl, title, onClose }: Props) {
+export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }: Props) {
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, window.innerWidth  / 2 - DEFAULT_W / 2),
     y: Math.max(0, window.innerHeight / 2 - DEFAULT_H / 2 - 60),
@@ -80,6 +83,7 @@ export function FloatingVideoPlayer({ videoUrl, title, onClose }: Props) {
         src={videoUrl}
         autoPlay
         controls
+        muted={muted}
         className="bg-black"
         style={{ display: "block", width: "100%", height: "calc(100% - 36px)" }}
       />

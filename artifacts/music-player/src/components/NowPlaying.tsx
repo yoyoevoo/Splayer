@@ -52,9 +52,24 @@ export function NowPlaying() {
     writeVizPref(next);
   };
 
-  // Find a companion MP4 track (memoised so effects don't re-run every render)
+  // Find the video source for the current track (memoised so effects don't
+  // re-run every render).
+  //
+  // Priority order:
+  //  1. The track itself is a merged MP4 (localStorage marker set at download
+  //     time) → use currentTrack directly as the video source.
+  //  2. A separate companion track whose filename is stem + ".mp4".
   const matchingVideoTrack = useMemo(() => {
     if (!currentTrack) return null;
+
+    // 1 — merged self-video check
+    try {
+      if (localStorage.getItem(`merged-video-trackid:${currentTrack.id}`) === "1") {
+        return currentTrack;
+      }
+    } catch {}
+
+    // 2 — companion filename match (existing fallback)
     const base = currentTrack.file.name.replace(/\.[^.]+$/, "").toLowerCase();
     return (
       tracks.find(
@@ -65,7 +80,10 @@ export function NowPlaying() {
     );
   }, [currentTrack, tracks]);
 
-  const hasVideo = matchingVideoTrack !== null;
+  const hasVideo    = matchingVideoTrack !== null;
+  // True when the current track IS the video (merged MP4) — we mute the
+  // floating panel to avoid double audio with the main player.
+  const isSelfVideo = matchingVideoTrack !== null && matchingVideoTrack === currentTrack;
 
   // ── Auto-off: floating panel ─────────────────────────────────────────
   useEffect(() => {
@@ -367,6 +385,7 @@ export function NowPlaying() {
           videoUrl={matchingVideoTrack.url}
           title={matchingVideoTrack.title || matchingVideoTrack.file.name}
           onClose={() => setVideoOpen(false)}
+          muted={isSelfVideo}
         />
       )}
 

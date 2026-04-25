@@ -373,7 +373,15 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       }
 
       await addFiles([file]);
-      await updateTrackInfo(file.name + "-" + file.size, {
+
+      // Mark this track as a self-contained merged video so NowPlaying can
+      // detect it and enable the video button without needing a companion file.
+      const mergedTrackId = `${file.name}-${file.size}`;
+      try {
+        localStorage.setItem(`merged-video-trackid:${mergedTrackId}`, "1");
+      } catch {}
+
+      await updateTrackInfo(mergedTrackId, {
         title:  result.title,
         artist: result.author,
       });
