@@ -5,6 +5,7 @@ import {
   FileMusic,
   FolderOpen,
   Heart,
+  Image,
   ImageDown,
   ImagePlus,
   ListMusic,
@@ -41,6 +42,7 @@ import { EditTrackDialog } from "./EditTrackDialog";
 import { BulkTagEditor } from "./BulkTagEditor";
 import { ArtworkFetcher } from "./ArtworkFetcher";
 import { DuplicateFinder } from "./DuplicateFinder";
+import { SetArtworkDialog } from "./SetArtworkDialog";
 import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
@@ -137,6 +139,7 @@ function LibraryView() {
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [artFetcherOpen, setArtFetcherOpen] = useState(false);
   const [dupFinderOpen, setDupFinderOpen] = useState(false);
+  const [setArtTrack, setSetArtTrack] = useState<Track | null>(null);
   const missingArtCount = tracks.filter((t) => !trackCoverUrl(t)).length;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -331,6 +334,19 @@ function LibraryView() {
                         {t.artist}
                       </div>
                     </div>
+                    {/* Hover: Set Artwork icon */}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSetArtTrack(t);
+                      }}
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-primary"
+                      title="Set artwork"
+                    >
+                      <Image className="w-3.5 h-3.5" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
@@ -373,6 +389,15 @@ function LibraryView() {
                           onCreate={() => setNewPlaylistFor(t.id)}
                         />
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSetArtTrack(t);
+                          }}
+                        >
+                          <Image className="w-4 h-4 mr-2" />
+                          Set artwork
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
@@ -457,6 +482,13 @@ function LibraryView() {
         open={dupFinderOpen}
         onOpenChange={setDupFinderOpen}
       />
+      {setArtTrack && (
+        <SetArtworkDialog
+          open={setArtTrack !== null}
+          onOpenChange={(o) => { if (!o) setSetArtTrack(null); }}
+          track={setArtTrack}
+        />
+      )}
       <NewPlaylistDialog
         open={newPlaylistFor !== null}
         onOpenChange={(o) => {
