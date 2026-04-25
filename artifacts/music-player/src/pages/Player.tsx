@@ -182,7 +182,10 @@ export default function Player() {
       {/* ── Main content ───────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden">
         {miniMode ? (
-          <HomeDashboard />
+          <>
+            <HomeDashboard />
+            <Playlist />
+          </>
         ) : hasTracks ? (
           <>
             <NowPlaying />
