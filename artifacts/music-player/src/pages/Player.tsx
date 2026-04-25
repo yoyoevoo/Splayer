@@ -7,6 +7,7 @@ import {
   Maximize2,
   Minimize2,
   Music,
+  Palette,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { NowPlaying } from "@/components/NowPlaying";
 import { Playlist } from "@/components/Playlist";
 import { PlayerControls } from "@/components/PlayerControls";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
+import { AppearanceDialog } from "@/components/AppearanceDialog";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,7 +40,8 @@ export default function Player() {
     cycleRepeat,
   } = usePlayer();
 
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shortcutsOpen,   setShortcutsOpen]   = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [miniMode,      setMiniMode]      = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
   const dragCounter = useRef(0);
@@ -169,6 +172,18 @@ export default function Player() {
           <Button
             size="icon"
             variant="ghost"
+            onClick={() => setAppearanceOpen(true)}
+            className="h-8 w-8 text-muted-foreground"
+            data-testid="button-appearance"
+            aria-label="Appearance"
+            title="Appearance"
+          >
+            <Palette className="w-4 h-4" />
+          </Button>
+
+          <Button
+            size="icon"
+            variant="ghost"
             onClick={() => setShortcutsOpen(true)}
             className="h-8 w-8 text-muted-foreground"
             data-testid="button-shortcuts"
@@ -225,6 +240,7 @@ export default function Player() {
       </AnimatePresence>
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <AppearanceDialog open={appearanceOpen} onOpenChange={setAppearanceOpen} />
 
       <input ref={fileRef} type="file"
         accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"
