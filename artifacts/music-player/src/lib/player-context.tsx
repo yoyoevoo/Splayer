@@ -76,6 +76,8 @@ interface PlayerContextValue {
   toggleMute: () => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  speed: number;
+  setSpeed: (v: number) => void;
   toggleCrossfade: () => void;
   setCrossfadeSecs: (s: number) => void;
   removeTrack: (id: string) => void;
@@ -127,6 +129,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const [crossfadeEnabled, setCrossfadeEnabledState] = useState(true);
   const [crossfadeSecs, setCrossfadeSecsState] = useState(3);
+  const [speed, setSpeedState] = useState<number>(() => {
+    const saved = localStorage.getItem("player-speed");
+    if (saved !== null) { const v = parseFloat(saved); if (!isNaN(v) && v > 0) return v; }
+    return 1;
+  });
 
   // Equalizer state (persisted in localStorage)
   const [eqGains, setEqGainsState] = useState<number[]>(() => {
@@ -164,8 +171,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const shuffleRef = useRef(false);
   const repeatRef = useRef<RepeatMode>("off");
 
+  const speedRef = useRef(speed);
+
   crossfadeEnabledRef.current = crossfadeEnabled;
   crossfadeSecsRef.current = crossfadeSecs;
+  speedRef.current = speed;
   volumeRef.current = volume;
   mutedRef.current = muted;
   shuffleRef.current = shuffle;
@@ -617,6 +627,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [ensureWA]); // ensureWA is stable (useCallback [])
 
+  // Playback speed sync — apply to both audio elements
+  useEffect(() => {
+    if (audioRef.current)   audioRef.current.playbackRate   = speed;
+    if (xfAudioRef.current) xfAudioRef.current.playbackRate = speed;
+  }, [speed]);
+
   // Volume / mute sync — skip while crossfade is ramping
   useEffect(() => {
     const audio = audioRef.current;
@@ -662,6 +678,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
     audio.currentTime = time;
     setCurrentTime(time);
+  }, []);
+
+  const setSpeed = useCallback((v: number) => {
+    setSpeedState(v);
+    localStorage.setItem("player-speed", String(v));
   }, []);
 
   const setVolume = useCallback(
@@ -1237,6 +1258,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      speed,
+      setSpeed,
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,
@@ -1254,6 +1277,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       reorderPlaylist,
     }),
     [
+      speed,
       tracks,
       playlists,
       currentIndex,
@@ -1285,6 +1309,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      speed,
+      setSpeed,
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,

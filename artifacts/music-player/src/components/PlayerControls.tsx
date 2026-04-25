@@ -48,10 +48,21 @@ export function PlayerControls() {
     toggleMute,
     toggleShuffle,
     cycleRepeat,
+    speed,
+    setSpeed,
     toggleCrossfade,
     setCrossfadeSecs,
     toggleLike,
   } = usePlayer();
+
+  const SPEED_OPTIONS = [
+    { value: 0.5,  label: "0.5×" },
+    { value: 0.75, label: "0.75×" },
+    { value: 1,    label: "Normal" },
+    { value: 1.25, label: "1.25×" },
+    { value: 1.5,  label: "1.5×" },
+    { value: 2,    label: "2×" },
+  ];
 
   const [lyricsOpen, setLyricsOpen] = useState(false);
 
@@ -215,6 +226,40 @@ export function PlayerControls() {
             >
               <Mic2 className="h-4 w-4" />
             </Button>
+
+            {/* Speed */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "h-8 px-1.5 text-xs font-medium tabular-nums",
+                    speed !== 1 ? "text-primary" : "text-muted-foreground",
+                  )}
+                  data-testid="button-speed"
+                  aria-label="Playback speed"
+                  title="Playback speed"
+                >
+                  {speed === 1 ? "1×" : SPEED_OPTIONS.find(o => o.value === speed)?.label ?? `${speed}×`}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-36 p-1">
+                {SPEED_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSpeed(opt.value)}
+                    className={cn(
+                      "w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent transition-colors",
+                      speed === opt.value ? "text-primary font-medium" : "text-foreground",
+                    )}
+                    data-testid={`speed-option-${opt.value}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
 
             <Popover>
               <PopoverTrigger asChild>
