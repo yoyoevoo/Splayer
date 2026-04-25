@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HelpCircle, Music, Upload } from "lucide-react";
+import { ChevronDown, FileMusic, FolderOpen, HelpCircle, Music, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { usePlayer } from "@/lib/player-context";
 import { EmptyState } from "@/components/EmptyState";
 import { NowPlaying } from "@/components/NowPlaying";
@@ -24,6 +30,14 @@ export default function Player() {
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (folderRef.current) {
+      folderRef.current.setAttribute("webkitdirectory", "");
+      folderRef.current.setAttribute("directory", "");
+    }
+  }, []);
 
   const onFiles = useCallback(
     (files: File[]) => {
@@ -129,16 +143,30 @@ export default function Player() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => fileRef.current?.click()}
-            className="gap-2"
-            data-testid="button-header-add"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Add music
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-2"
+                data-testid="button-header-add"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Add music
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => fileRef.current?.click()}>
+                <FileMusic className="w-4 h-4 mr-2" />
+                Add files...
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => folderRef.current?.click()}>
+                <FolderOpen className="w-4 h-4 mr-2" />
+                Add folder...
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="icon"
             variant="ghost"
@@ -193,6 +221,13 @@ export default function Player() {
         ref={fileRef}
         type="file"
         accept="audio/*"
+        multiple
+        className="hidden"
+        onChange={onChange}
+      />
+      <input
+        ref={folderRef}
+        type="file"
         multiple
         className="hidden"
         onChange={onChange}

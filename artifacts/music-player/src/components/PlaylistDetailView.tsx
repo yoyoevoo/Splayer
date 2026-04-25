@@ -322,13 +322,14 @@ export function PlaylistDetailView({
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-70 hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeTrackFromPlaylist(playlist.id, t.id);
                         }}
                         data-testid={`button-remove-from-playlist-${t.id}`}
                         aria-label="Remove from playlist"
+                        title="Remove from playlist"
                       >
                         <X className="w-4 h-4" />
                       </Button>

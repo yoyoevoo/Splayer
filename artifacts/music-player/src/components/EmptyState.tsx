@@ -1,14 +1,23 @@
-import { Music, Upload } from "lucide-react";
+import { FolderOpen, Music, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePlayer } from "@/lib/player-context";
 import { motion } from "framer-motion";
 
 export function EmptyState() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const { addFiles } = usePlayer();
 
-  const onPick = () => fileInputRef.current?.click();
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute("webkitdirectory", "");
+      folderInputRef.current.setAttribute("directory", "");
+    }
+  }, []);
+
+  const onPickFiles = () => fileInputRef.current?.click();
+  const onPickFolder = () => folderInputRef.current?.click();
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length) addFiles(files);
@@ -41,15 +50,26 @@ export function EmptyState() {
             Your listening room is quiet
           </h1>
           <p className="text-muted-foreground leading-relaxed">
-            Add some music from your computer to get started. Drag audio files
-            anywhere on this window, or pick them with the button below. Your
-            files stay on your machine — nothing is uploaded.
+            Add some music from your computer to get started. Drop files
+            anywhere, pick individual songs, or grab a whole folder. Your files
+            stay on your machine — nothing is uploaded.
           </p>
         </div>
-        <Button onClick={onPick} size="lg" className="gap-2 px-6">
-          <Upload className="w-4 h-4" />
-          Add Music
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button onClick={onPickFiles} size="lg" className="gap-2 px-6">
+            <Upload className="w-4 h-4" />
+            Add files
+          </Button>
+          <Button
+            onClick={onPickFolder}
+            size="lg"
+            variant="outline"
+            className="gap-2 px-6"
+          >
+            <FolderOpen className="w-4 h-4" />
+            Add folder
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground/70">
           Supports MP3, FLAC, WAV, OGG, M4A
         </p>
@@ -57,6 +77,13 @@ export function EmptyState() {
           ref={fileInputRef}
           type="file"
           accept="audio/*"
+          multiple
+          className="hidden"
+          onChange={onChange}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
           multiple
           className="hidden"
           onChange={onChange}

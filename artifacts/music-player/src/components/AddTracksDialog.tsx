@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Search } from "lucide-react";
+import { Check, CheckSquare, Search, Square } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -79,13 +79,28 @@ export function AddTracksDialog({
     onOpenChange(false);
   };
 
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((t) => selected.has(t.id));
+  const toggleAllFiltered = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const t of filtered) next.delete(t.id);
+      } else {
+        for (const t of filtered) next.add(t.id);
+      }
+      return next;
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add tracks to "{playlist.name}"</DialogTitle>
           <DialogDescription>
-            Pick songs from your library. Already-added tracks are hidden.
+            Tap each song to select it, then add them all at once.
+            Already-added tracks are hidden.
           </DialogDescription>
         </DialogHeader>
 
@@ -101,6 +116,31 @@ export function AddTracksDialog({
             data-testid="input-add-track-search"
           />
         </div>
+
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between px-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={toggleAllFiltered}
+              className="gap-1.5 h-7 text-xs"
+              data-testid="button-toggle-select-all"
+            >
+              {allFilteredSelected ? (
+                <CheckSquare className="w-3.5 h-3.5" />
+              ) : (
+                <Square className="w-3.5 h-3.5" />
+              )}
+              {allFilteredSelected ? "Deselect all" : "Select all"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {selected.size > 0
+                ? `${selected.size} selected`
+                : `${filtered.length} available`}
+            </span>
+          </div>
+        )}
 
         <ScrollArea className="h-72 rounded-md border border-card-border">
           {candidates.length === 0 ? (

@@ -1,6 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ChevronDown,
+  FileMusic,
+  FolderOpen,
   ImagePlus,
   ListMusic,
   Music,
@@ -113,8 +116,16 @@ function LibraryView() {
   const [editTrack, setEditTrack] = useState<Track | null>(null);
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const coverTrackIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute("webkitdirectory", "");
+      folderInputRef.current.setAttribute("directory", "");
+    }
+  }, []);
 
   const filtered = tracks
     .map((t, i) => ({ t, i }))
@@ -128,7 +139,6 @@ function LibraryView() {
       );
     });
 
-  const onAddClick = () => fileInputRef.current?.click();
   const onAddChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length) addFiles(files);
@@ -154,16 +164,30 @@ function LibraryView() {
           <h2 className="text-sm font-medium tracking-wide text-foreground/80 uppercase">
             Library
           </h2>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onAddClick}
-            className="gap-1.5"
-            data-testid="button-add-music"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5"
+                data-testid="button-add-music"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+                <ChevronDown className="w-3 h-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                <FileMusic className="w-4 h-4 mr-2" />
+                Add files...
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => folderInputRef.current?.click()}>
+                <FolderOpen className="w-4 h-4 mr-2" />
+                Add folder...
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -313,6 +337,13 @@ function LibraryView() {
         ref={fileInputRef}
         type="file"
         accept="audio/*"
+        multiple
+        className="hidden"
+        onChange={onAddChange}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
         multiple
         className="hidden"
         onChange={onAddChange}
