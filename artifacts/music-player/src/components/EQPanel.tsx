@@ -25,7 +25,17 @@ export function EQPanel({ trigger }: EQPanelProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold tracking-wide">Equalizer</span>
-          <span className="text-xs text-muted-foreground">{eqPreset}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{eqPreset}</span>
+            <button
+              type="button"
+              onClick={() => applyEqPreset("Flat")}
+              className="text-[11px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              title="Reset all bands to 0 dB"
+            >
+              Reset
+            </button>
+          </div>
         </div>
 
         {/* Preset buttons */}

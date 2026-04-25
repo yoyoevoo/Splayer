@@ -1,120 +1,96 @@
 import { useEffect, useRef } from "react";
 import { usePlayer } from "@/lib/player-context";
 
-// Orange accent palette matching the app theme
-const ORANGE_0 = "rgba(249,115,22,0.9)";  // orange-500
-const ORANGE_1 = "rgba(251,146,60,0.7)";  // orange-400
-const ORANGE_2 = "rgba(254,215,170,0.3)"; // orange-200
-
-const BAR_COUNT = 28;
+const BAR_COUNT = 24;
 
 export function Visualizer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const { analyserRef, isPlaying } = usePlayer();
-  const rafRef = useRef<number | null>(null);
-  const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
-  // Resize canvas to match CSS size (pixel-accurate, DPR-aware)
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
+  // Keep isPlaying in a ref so the RAF loop never needs to restart
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
 
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const dpr = window.devicePixelRatio || 1;
-        const { width, height } = entry.contentRect;
-        canvas.width = Math.round(width * dpr);
-        canvas.height = Math.round(height * dpr);
-      }
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
+  // Pre-allocate frequency data buffer (re-sized when needed)
+  const dataRef = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(256));
 
-  // Animation loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let rafId: number;
+
     const draw = () => {
-      rafRef.current = requestAnimationFrame(draw);
+      rafId = requestAnimationFrame(draw);
+
+      // Auto-resize canvas buffer to match CSS size (handles layout changes)
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width * dpr);
+      const h = Math.round(rect.height * dpr);
+
+      if (w <= 0 || h <= 0) return;
+
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+
       const analyser = analyserRef.current;
-      const { width, height } = canvas;
 
-      ctx.clearRect(0, 0, width, height);
+      if (!analyser || !isPlayingRef.current) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+      }
 
-      if (!analyser) return;
-
-      // Reuse typed array
       const binCount = analyser.frequencyBinCount;
-      if (!dataRef.current || dataRef.current.length !== binCount) {
+      if (dataRef.current.length !== binCount) {
         dataRef.current = new Uint8Array(binCount);
       }
       analyser.getByteFrequencyData(dataRef.current);
-
       const data = dataRef.current;
 
-      // We only use the lower half of bins (most musical content is there)
-      const usableBins = Math.floor(binCount * 0.6);
+      ctx.clearRect(0, 0, w, h);
+
+      // Only use lower 65% of bins (upper bins are mostly silence for music)
+      const usableBins = Math.floor(binCount * 0.65);
       const step = Math.max(1, Math.floor(usableBins / BAR_COUNT));
 
-      const gap = Math.max(1, Math.floor(width * 0.005));
-      const totalBars = BAR_COUNT * 2;
-      const barW = Math.max(2, Math.floor((width - (totalBars - 1) * gap) / totalBars));
-      const centerX = Math.round(width / 2);
+      const gap = Math.max(1, Math.round(w * 0.006));
+      const barW = Math.max(2, Math.floor((w / 2 - BAR_COUNT * gap) / BAR_COUNT));
+      const cx = Math.floor(w / 2);
 
-      // Build gradient once per frame (height can change on resize)
-      const grad = ctx.createLinearGradient(0, height, 0, 0);
-      grad.addColorStop(0,   ORANGE_0);
-      grad.addColorStop(0.5, ORANGE_1);
-      grad.addColorStop(1,   ORANGE_2);
+      const grad = ctx.createLinearGradient(0, h, 0, 0);
+      grad.addColorStop(0,   "rgba(249,115,22,0.92)");
+      grad.addColorStop(0.5, "rgba(251,146,60,0.70)");
+      grad.addColorStop(1,   "rgba(254,215,170,0.35)");
       ctx.fillStyle = grad;
 
       for (let i = 0; i < BAR_COUNT; i++) {
-        // Average a few bins per bar for smoother look
+        // Average a band of bins for smooth bars
         let sum = 0;
         for (let k = 0; k < step; k++) {
           sum += data[i * step + k] ?? 0;
         }
         const norm = sum / (step * 255);
-        const barH = Math.max(3, Math.round(norm * height * 0.92));
+        const bh = Math.max(3, Math.round(norm * h * 0.92));
 
-        // Right side
-        const xRight = centerX + i * (barW + gap);
-        ctx.fillRect(xRight, height - barH, barW, barH);
-
-        // Left mirror
-        const xLeft = centerX - (i + 1) * (barW + gap);
-        ctx.fillRect(xLeft, height - barH, barW, barH);
+        ctx.fillRect(cx + i * (barW + gap),       h - bh, barW, bh); // right
+        ctx.fillRect(cx - (i + 1) * (barW + gap), h - bh, barW, bh); // left mirror
       }
     };
 
     draw();
-
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [analyserRef]);
-
-  // When paused, clear the canvas so bars don't freeze
-  useEffect(() => {
-    if (!isPlaying) {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  }, [isPlaying]);
+    return () => cancelAnimationFrame(rafId);
+  }, []); // runs once — uses refs for all live values
 
   return (
-    <div ref={containerRef} className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none" style={{ zIndex: 1 }}>
-      <canvas ref={canvasRef} className="w-full h-full" />
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full rounded-2xl pointer-events-none"
+      style={{ zIndex: 1 }}
+    />
   );
 }

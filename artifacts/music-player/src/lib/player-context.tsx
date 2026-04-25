@@ -371,11 +371,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (audio.paused) {
+      ensureWA(audio); // resume AudioContext if suspended
       audio.play().catch(() => {});
     } else {
       audio.pause();
     }
-  }, [currentTrackId, playTrackById]);
+  }, [currentTrackId, playTrackById, ensureWA]);
 
   const next = useCallback(() => {
     const list = queueRef.current;
