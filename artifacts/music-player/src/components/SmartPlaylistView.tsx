@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Clock,
+  Heart,
+  History,
   Play,
   Search,
   Sparkles,
@@ -29,12 +31,18 @@ interface SmartPlaylistViewProps {
 }
 
 function smartIcon(kind: SmartPlaylistKind) {
+  if (kind === "liked-songs") return Heart;
+  if (kind === "recently-played") return History;
   if (kind === "most-played") return TrendingUp;
   if (kind === "recently-added") return Sparkles;
   return Clock;
 }
 
 function smartGradient(kind: SmartPlaylistKind): string {
+  if (kind === "liked-songs")
+    return "linear-gradient(135deg, hsl(340 70% 45%), hsl(320 60% 30%))";
+  if (kind === "recently-played")
+    return "linear-gradient(135deg, hsl(250 65% 50%), hsl(220 60% 30%))";
   if (kind === "most-played")
     return "linear-gradient(135deg, hsl(28 80% 45%), hsl(15 70% 30%))";
   if (kind === "recently-added")
@@ -42,8 +50,24 @@ function smartGradient(kind: SmartPlaylistKind): string {
   return "linear-gradient(135deg, hsl(140 50% 40%), hsl(180 55% 25%))";
 }
 
+function emptyMessage(kind: SmartPlaylistKind): string {
+  switch (kind) {
+    case "liked-songs":
+      return "Heart a track to see it here.";
+    case "recently-played":
+      return "Play some music and it'll show up here.";
+    case "most-played":
+      return "Play some music and your top tracks will show up here.";
+    case "recently-added":
+      return "Add music to your library to see your latest additions.";
+    case "never-played":
+      return "You've listened to everything. Nice work!";
+  }
+}
+
 export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
-  const { tracks, currentTrack, isPlaying, playFromList } = usePlayer();
+  const { tracks, currentTrack, isPlaying, playFromList, toggleLike } =
+    usePlayer();
   const [query, setQuery] = useState("");
 
   const meta = SMART_PLAYLISTS.find((s) => s.kind === kind);
@@ -144,12 +168,7 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
         {computed.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <div className="text-sm text-muted-foreground">
-              {kind === "most-played" &&
-                "Play some music and your top tracks will show up here."}
-              {kind === "recently-added" &&
-                "Add music to your library to see your latest additions."}
-              {kind === "never-played" &&
-                "You've listened to everything. Nice work!"}
+              {emptyMessage(kind)}
             </div>
           </div>
         ) : (
@@ -157,6 +176,7 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
             <AnimatePresence initial={false}>
               {filtered.map(({ t, i }) => {
                 const isActive = currentTrack?.id === t.id;
+                const liked = t.liked ?? false;
                 return (
                   <motion.li
                     key={t.id}
@@ -219,6 +239,26 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                           {t.playCount === 1 ? "play" : "plays"}
                         </span>
                       )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLike(t.id);
+                        }}
+                        className={cn(
+                          "h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0",
+                          liked
+                            ? "text-red-500 opacity-100"
+                            : "text-muted-foreground",
+                        )}
+                        aria-label={liked ? "Unlike" : "Like"}
+                      >
+                        <Heart
+                          className="w-3.5 h-3.5"
+                          fill={liked ? "currentColor" : "none"}
+                        />
+                      </Button>
                       <span className="text-[11px] text-muted-foreground tabular-nums">
                         {formatTime(t.duration)}
                       </span>

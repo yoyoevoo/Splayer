@@ -19,6 +19,7 @@ interface StoredTrack {
   customAlbum?: string;
   playCount?: number;
   lastPlayedAt?: number;
+  liked?: boolean;
 }
 
 interface StoredPlaylist {
@@ -45,7 +46,7 @@ let dbPromise: Promise<IDBPDatabase<MusicPlayerDB>> | null = null;
 
 async function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<MusicPlayerDB>('music-player-db', 3, {
+    dbPromise = openDB<MusicPlayerDB>('music-player-db', 4, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           db.createObjectStore('tracks', { keyPath: 'id' });
@@ -55,6 +56,7 @@ async function getDB() {
             db.createObjectStore('playlists', { keyPath: 'id' });
           }
         }
+        // v4: added liked field — no schema change needed, just bumped version
       },
     });
   }

@@ -36,6 +36,8 @@ interface PlayerContextValue {
   shuffle: boolean;
   repeat: RepeatMode;
   loadingFiles: boolean;
+  crossfadeEnabled: boolean;
+  crossfadeSecs: number;
   addFiles: (files: File[]) => Promise<void>;
   playIndex: (index: number) => void;
   playFromList: (
@@ -51,6 +53,8 @@ interface PlayerContextValue {
   toggleMute: () => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
+  toggleCrossfade: () => void;
+  setCrossfadeSecs: (s: number) => void;
   removeTrack: (id: string) => void;
   setCustomCover: (id: string, file: File) => Promise<void>;
   clearCustomCover: (id: string) => Promise<void>;
@@ -58,6 +62,7 @@ interface PlayerContextValue {
     id: string,
     info: { title?: string; artist?: string; album?: string },
   ) => Promise<void>;
+  toggleLike: (id: string) => Promise<void>;
   // playlists
   createPlaylist: (name: string) => Promise<Playlist>;
   renamePlaylist: (id: string, name: string) => Promise<void>;
@@ -90,6 +95,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeat, setRepeat] = useState<RepeatMode>("off");
   const [loadingFiles, setLoadingFiles] = useState(false);
 
+  const [crossfadeEnabled, setCrossfadeEnabledState] = useState(true);
+  const [crossfadeSecs, setCrossfadeSecsState] = useState(3);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const tracksRef = useRef<Track[]>([]);
   tracksRef.current = tracks;
@@ -100,6 +108,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const currentTrackIdRef = useRef<string | null>(null);
   currentTrackIdRef.current = currentTrackId;
   const countedTrackIdRef = useRef<string | null>(null);
+
+  // Crossfade refs (avoid stale closures in event handlers)
+  const crossfadeEnabledRef = useRef(true);
+  const crossfadeSecsRef = useRef(3);
+  const volumeRef = useRef(0.85);
+  const mutedRef = useRef(false);
+  const xfTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const xfPhaseRef = useRef<"idle" | "out" | "in">("idle");
+
+  crossfadeEnabledRef.current = crossfadeEnabled;
+  crossfadeSecsRef.current = crossfadeSecs;
+  volumeRef.current = volume;
+  mutedRef.current = muted;
+
+  function clearXfTimer() {
+    if (xfTimerRef.current !== null) {
+      clearInterval(xfTimerRef.current);
+      xfTimerRef.current = null;
+    }
+  }
+
+  function startVolumeRamp(
+    audio: HTMLAudioElement,
+    fromVol: number,
+    toVol: number,
+    durationMs: number,
+    phase: "out" | "in",
+    onDone?: () => void,
+  ) {
+    clearXfTimer();
+    xfPhaseRef.current = phase;
+    const steps = Math.max(1, Math.round(durationMs / 40));
+    const delta = (toVol - fromVol) / steps;
+    let step = 0;
+    audio.volume = Math.max(0, Math.min(1, fromVol));
+    xfTimerRef.current = setInterval(() => {
+      step++;
+      const vol = Math.max(0, Math.min(1, fromVol + delta * step));
+      audio.volume = vol;
+      if (step >= steps) {
+        audio.volume = toVol;
+        clearXfTimer();
+        xfPhaseRef.current = "idle";
+        onDone?.();
+      }
+    }, 40);
+  }
 
   if (!audioRef.current && typeof window !== "undefined") {
     audioRef.current = new Audio();
@@ -138,12 +193,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     const track = tracksRef.current.find((t) => t.id === trackId);
     if (!audio || !track) return;
-    if (audio.src !== track.url) {
+    const isNewSrc = audio.src !== track.url;
+    if (isNewSrc) {
       audio.src = track.url;
       countedTrackIdRef.current = null;
     }
     setCurrentTrackId(trackId);
-    audio.play().catch(() => {});
+    if (isNewSrc && crossfadeEnabledRef.current && !mutedRef.current) {
+      const effVol = volumeRef.current;
+      audio.volume = 0;
+      audio.play().catch(() => {});
+      startVolumeRamp(audio, 0, effVol, crossfadeSecsRef.current * 1000, "in");
+    } else {
+      clearXfTimer();
+      xfPhaseRef.current = "idle";
+      if (!mutedRef.current) audio.volume = volumeRef.current;
+      audio.play().catch(() => {});
+    }
   }, []);
 
   const playIndex = useCallback(
@@ -261,7 +327,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setCurrentTime(audio.currentTime);
+    const onTime = () => {
+      const t = audio.currentTime;
+      setCurrentTime(t);
+      if (
+        crossfadeEnabledRef.current &&
+        !mutedRef.current &&
+        audio.duration > 0 &&
+        xfPhaseRef.current !== "out"
+      ) {
+        const remaining = audio.duration - t;
+        const xfSecs = crossfadeSecsRef.current;
+        if (remaining > 0 && remaining <= xfSecs) {
+          startVolumeRamp(
+            audio,
+            audio.volume,
+            0,
+            remaining * 1000,
+            "out",
+          );
+        }
+      }
+    };
     const onMeta = () => setDuration(audio.duration || 0);
     const onPlay = () => {
       setIsPlaying(true);
@@ -308,11 +395,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [handleEnded]);
 
-  // Volume / mute sync
+  // Volume / mute sync — don't fight active crossfade ramps
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-      audioRef.current.muted = muted;
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = muted;
+    // If a crossfade ramp is active, don't override volume mid-ramp
+    if (xfPhaseRef.current === "idle") {
+      audio.volume = muted ? 0 : volume;
     }
   }, [volume, muted]);
 
@@ -347,6 +437,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off")),
     [],
   );
+  const toggleCrossfade = useCallback(
+    () => setCrossfadeEnabledState((e) => !e),
+    [],
+  );
+  const setCrossfadeSecs = useCallback((s: number) => {
+    setCrossfadeSecsState(Math.max(1, Math.min(10, s)));
+  }, []);
+
+  const toggleLike = useCallback(async (id: string) => {
+    let newLiked = false;
+    setTracks((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        newLiked = !t.liked;
+        return { ...t, liked: newLiked };
+      }),
+    );
+    await saveStoredTrack(id, { liked: newLiked });
+  }, []);
 
   const addFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -377,6 +486,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const addedAt = stored?.addedAt ?? Date.now();
           const playCount = stored?.playCount ?? 0;
           const lastPlayedAt = stored?.lastPlayedAt;
+          const liked = stored?.liked ?? false;
           const track: Track = {
             id,
             file,
@@ -391,6 +501,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             addedAt,
             playCount,
             lastPlayedAt,
+            liked,
           };
           newTracks.push(track);
 
@@ -469,6 +580,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               addedAt: s.addedAt ?? Date.now(),
               playCount: s.playCount ?? 0,
               lastPlayedAt: s.lastPlayedAt,
+              liked: s.liked ?? false,
             });
           }
           if (restored.length > 0) {
@@ -829,6 +941,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeat,
       loadingFiles,
+      crossfadeEnabled,
+      crossfadeSecs,
       addFiles,
       playIndex,
       playFromList,
@@ -840,10 +954,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      toggleCrossfade,
+      setCrossfadeSecs,
       removeTrack,
       setCustomCover,
       clearCustomCover,
       updateTrackInfo,
+      toggleLike,
       createPlaylist,
       renamePlaylist,
       deletePlaylist,
@@ -868,6 +985,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeat,
       loadingFiles,
+      crossfadeEnabled,
+      crossfadeSecs,
       addFiles,
       playIndex,
       playFromList,
@@ -879,10 +998,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       toggleShuffle,
       cycleRepeat,
+      toggleCrossfade,
+      setCrossfadeSecs,
       removeTrack,
       setCustomCover,
       clearCustomCover,
       updateTrackInfo,
+      toggleLike,
       createPlaylist,
       renamePlaylist,
       deletePlaylist,

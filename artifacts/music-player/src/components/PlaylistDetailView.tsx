@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
+  Heart,
   ImagePlus,
   MoreHorizontal,
   Pencil,
@@ -59,6 +60,7 @@ export function PlaylistDetailView({
     deletePlaylist,
     setPlaylistCover,
     removeTrackFromPlaylist,
+    toggleLike,
   } = usePlayer();
 
   const playlist = playlists.find((p) => p.id === playlistId);
@@ -325,6 +327,24 @@ export function PlaylistDetailView({
                           {t.artist}
                         </div>
                       </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLike(t.id);
+                        }}
+                        className={cn(
+                          "h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0",
+                          t.liked ? "text-red-500 opacity-100" : "text-muted-foreground",
+                        )}
+                        aria-label={t.liked ? "Unlike" : "Like"}
+                      >
+                        <Heart
+                          className="w-3.5 h-3.5"
+                          fill={t.liked ? "currentColor" : "none"}
+                        />
+                      </Button>
                       <span className="text-[11px] text-muted-foreground tabular-nums">
                         {formatTime(t.duration)}
                       </span>

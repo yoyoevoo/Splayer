@@ -14,6 +14,7 @@ export interface Track {
   addedAt: number;
   playCount: number;
   lastPlayedAt?: number;
+  liked?: boolean;
 }
 
 export interface Playlist {
@@ -28,7 +29,9 @@ export interface Playlist {
 export type SmartPlaylistKind =
   | "most-played"
   | "recently-added"
-  | "never-played";
+  | "never-played"
+  | "recently-played"
+  | "liked-songs";
 
 export interface SmartPlaylist {
   kind: SmartPlaylistKind;
@@ -37,6 +40,16 @@ export interface SmartPlaylist {
 }
 
 export const SMART_PLAYLISTS: SmartPlaylist[] = [
+  {
+    kind: "liked-songs",
+    name: "Liked Songs",
+    description: "Tracks you've hearted",
+  },
+  {
+    kind: "recently-played",
+    name: "Recently Played",
+    description: "Your listening history",
+  },
   {
     kind: "most-played",
     name: "Most Played",
@@ -59,6 +72,15 @@ export function smartPlaylistTracks(
   allTracks: Track[],
 ): Track[] {
   switch (kind) {
+    case "liked-songs":
+      return [...allTracks]
+        .filter((t) => t.liked)
+        .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+    case "recently-played":
+      return [...allTracks]
+        .filter((t) => t.lastPlayedAt != null)
+        .sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0))
+        .slice(0, 100);
     case "most-played":
       return [...allTracks]
         .filter((t) => (t.playCount ?? 0) > 0)

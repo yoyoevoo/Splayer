@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight,
   Clock,
+  Heart,
+  History,
   ImagePlus,
   MoreHorizontal,
   Pencil,
@@ -38,12 +40,18 @@ interface PlaylistsViewProps {
 }
 
 function smartIcon(kind: SmartPlaylistKind) {
+  if (kind === "liked-songs") return Heart;
+  if (kind === "recently-played") return History;
   if (kind === "most-played") return TrendingUp;
   if (kind === "recently-added") return Sparkles;
   return Clock;
 }
 
 function smartGradient(kind: SmartPlaylistKind): string {
+  if (kind === "liked-songs")
+    return "linear-gradient(135deg, hsl(340 70% 45%), hsl(320 60% 30%))";
+  if (kind === "recently-played")
+    return "linear-gradient(135deg, hsl(250 65% 50%), hsl(220 60% 30%))";
   if (kind === "most-played")
     return "linear-gradient(135deg, hsl(28 80% 45%), hsl(15 70% 30%))";
   if (kind === "recently-added")

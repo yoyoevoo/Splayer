@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FileMusic,
   FolderOpen,
+  Heart,
   ImagePlus,
   ListMusic,
   Music,
@@ -122,6 +123,7 @@ function LibraryView() {
     removeTrack,
     setCustomCover,
     addTracksToPlaylist,
+    toggleLike,
   } = usePlayer();
   const [query, setQuery] = useState("");
   const [editTrack, setEditTrack] = useState<Track | null>(null);
@@ -277,6 +279,24 @@ function LibraryView() {
                         {t.artist}
                       </div>
                     </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLike(t.id);
+                      }}
+                      className={cn(
+                        "h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0",
+                        t.liked ? "text-red-500 opacity-100" : "text-muted-foreground",
+                      )}
+                      aria-label={t.liked ? "Unlike" : "Like"}
+                    >
+                      <Heart
+                        className="w-3.5 h-3.5"
+                        fill={t.liked ? "currentColor" : "none"}
+                      />
+                    </Button>
                     <span className="text-[11px] text-muted-foreground tabular-nums">
                       {formatTime(t.duration)}
                     </span>
