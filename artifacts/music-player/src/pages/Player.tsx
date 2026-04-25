@@ -178,64 +178,17 @@ export default function Player() {
         </div>
       </header>
 
-      {/* ── Main content ───────────────────────────────────────────────── */}
-      <AnimatePresence mode="wait">
-        {miniMode ? (
-          /* Mini mode: show a calm backdrop so it's obvious the UI collapsed */
-          <motion.div
-            key="mini-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{    opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1,   opacity: 1 }}
-              transition={{ delay: 0.05, duration: 0.3 }}
-              className="flex flex-col items-center gap-3"
-            >
-              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                <Minimize2 className="w-6 h-6 text-primary" />
-              </div>
-              <p className="text-base font-serif text-foreground/80">Mini Player is active</p>
-              <p className="text-sm text-muted-foreground max-w-xs">
-                The floating mini player is on your screen. Drag it anywhere, or click{" "}
-                <span className="text-foreground font-medium">Full Player</span> to come back.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-1 gap-2"
-                onClick={() => setMiniMode(false)}
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-                Return to full player
-              </Button>
-            </motion.div>
-          </motion.div>
+      {/* ── Main content (always visible, mini player floats on top) ──── */}
+      <div className="flex-1 flex overflow-hidden">
+        {hasTracks ? (
+          <>
+            <NowPlaying />
+            <Playlist />
+          </>
         ) : (
-          /* Normal mode */
-          <motion.div
-            key="main-content"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{    opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex-1 flex overflow-hidden"
-          >
-            {hasTracks ? (
-              <>
-                <NowPlaying />
-                <Playlist />
-              </>
-            ) : (
-              <EmptyState />
-            )}
-          </motion.div>
+          <EmptyState />
         )}
-      </AnimatePresence>
+      </div>
 
       {/* ── Footer controls (always visible) ──────────────────────────── */}
       <PlayerControls />
