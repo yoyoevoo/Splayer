@@ -931,13 +931,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return prev.filter((t) => t.id !== id);
     });
     if (currentTrackIdRef.current === id) {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
+      // If there are other tracks in the queue, advance to the next one.
+      // We call next() *before* the setTracks update is committed, so the
+      // deleted track is still in queueRef and idx lookup succeeds correctly.
+      const queue = queueRef.current;
+      if (queue.length > 1) {
+        next();
+      } else {
+        // Last track — just stop playback
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+          audio.removeAttribute("src");
+          audio.load();
+        }
+        setCurrentTrackId(null);
       }
-      setCurrentTrackId(null);
     }
     // Remove from all playlists too.
     setPlaylists((prev) => {
@@ -964,22 +973,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       return updated;
     });
-  }, []);
+  }, [next]);
 
   const deleteTrackWithFile = useCallback(async (id: string) => {
-    // Find the track's file path before removing it from state.
-    setTracks((prev) => {
-      const track = prev.find((t) => t.id === id);
-      if (track) {
-        const filePath = (track.file as any)?.path as string | undefined;
-        if (filePath && window.electronAPI?.deleteFile) {
-          window.electronAPI.deleteFile(filePath).catch((e: unknown) =>
-            console.warn("Failed to delete file from disk", e),
-          );
-        }
+    // Resolve file paths synchronously from the ref before touching state.
+    const track = tracksRef.current.find((t) => t.id === id);
+    if (track && window.electronAPI?.deleteFile) {
+      // 1. Delete the primary audio / merged-video file.
+      const filePath = (track.file as any)?.path as string | undefined;
+      if (filePath) {
+        window.electronAPI.deleteFile(filePath).catch((e: unknown) =>
+          console.warn("Failed to delete file from disk", e),
+        );
       }
-      return prev; // state update happens via removeTrack below
-    });
+
+      // 2. Delete the companion MP4 saved alongside a YouTube merged download.
+      try {
+        const companionPath = localStorage.getItem(`merged-video-path:${id}`);
+        if (companionPath) {
+          window.electronAPI.deleteFile!(companionPath).catch((e: unknown) =>
+            console.warn("Failed to delete companion MP4 from disk", e),
+          );
+          localStorage.removeItem(`merged-video-path:${id}`);
+        }
+        // Clean up the marker key too.
+        localStorage.removeItem(`merged-video-trackid:${id}`);
+      } catch {}
+    }
     removeTrack(id);
   }, [removeTrack]);
 

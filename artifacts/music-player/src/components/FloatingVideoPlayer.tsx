@@ -8,12 +8,23 @@ interface Props {
   /** Mute the video element — used when the merged MP4 already plays audio
    *  through the main player so we don't get double audio. */
   muted?: boolean;
+  /** Sync the floating video to the main player's current playback position. */
+  currentTime?: number;
+  /** Sync play/pause state with the main player. */
+  isPlaying?: boolean;
 }
 
 const DEFAULT_W = 480;
 const DEFAULT_H = 300;
 
-export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }: Props) {
+export function FloatingVideoPlayer({
+  videoUrl,
+  title,
+  onClose,
+  muted = false,
+  currentTime,
+  isPlaying,
+}: Props) {
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, window.innerWidth  / 2 - DEFAULT_W / 2),
     y: Math.max(0, window.innerHeight / 2 - DEFAULT_H / 2 - 60),
@@ -21,6 +32,7 @@ export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }:
 
   const dragging  = useRef(false);
   const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  const videoRef  = useRef<HTMLVideoElement>(null);
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -46,6 +58,26 @@ export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }:
     };
   }, []);
 
+  // Sync play / pause with main player
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || isPlaying === undefined) return;
+    if (isPlaying) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
+    }
+  }, [isPlaying]);
+
+  // Sync seek position — only correct large drifts to avoid jitter
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || currentTime === undefined) return;
+    if (Math.abs(v.currentTime - currentTime) > 0.75) {
+      v.currentTime = currentTime;
+    }
+  }, [currentTime]);
+
   return (
     <div
       className="fixed z-[100] flex flex-col rounded-xl border border-card-border shadow-[0_24px_80px_-12px_rgba(0,0,0,0.8)] bg-black"
@@ -60,7 +92,7 @@ export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }:
         overflow:  "hidden",
       }}
     >
-      {/* ── Drag handle / title bar ── */}
+      {/* Drag handle / title bar */}
       <div
         className="flex items-center gap-2 px-3 py-2 bg-card border-b border-card-border cursor-grab active:cursor-grabbing select-none shrink-0"
         style={{ height: 36 }}
@@ -77,12 +109,11 @@ export function FloatingVideoPlayer({ videoUrl, title, onClose, muted = false }:
         </button>
       </div>
 
-      {/* ── Video ── */}
+      {/* Video */}
       <video
+        ref={videoRef}
         key={videoUrl}
         src={videoUrl}
-        autoPlay
-        controls
         muted={muted}
         className="bg-black"
         style={{ display: "block", width: "100%", height: "calc(100% - 36px)" }}

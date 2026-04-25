@@ -80,6 +80,21 @@ export function NowPlaying() {
     );
   }, [currentTrack, tracks]);
 
+  // Resolve the best video URL for the floating player. For merged self-videos,
+  // prefer the persisted disk path (survives restarts) over the blob URL.
+  const floatingVideoUrl = useMemo(() => {
+    if (!matchingVideoTrack) return "";
+    if (matchingVideoTrack === currentTrack) {
+      try {
+        const savedPath = localStorage.getItem(
+          `merged-video-path:${currentTrack!.id}`,
+        );
+        if (savedPath) return `file://${savedPath}`;
+      } catch {}
+    }
+    return matchingVideoTrack.url;
+  }, [matchingVideoTrack, currentTrack]);
+
   const hasVideo    = matchingVideoTrack !== null;
   // True when the current track IS the video (merged MP4) — we mute the
   // floating panel to avoid double audio with the main player.
@@ -379,13 +394,15 @@ export function NowPlaying() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Floating video player (pre-existing) */}
-      {videoOpen && matchingVideoTrack && (
+      {/* Floating video player */}
+      {videoOpen && matchingVideoTrack && floatingVideoUrl && (
         <FloatingVideoPlayer
-          videoUrl={matchingVideoTrack.url}
+          videoUrl={floatingVideoUrl}
           title={matchingVideoTrack.title || matchingVideoTrack.file.name}
           onClose={() => setVideoOpen(false)}
           muted={isSelfVideo}
+          currentTime={currentTime}
+          isPlaying={isPlaying}
         />
       )}
 

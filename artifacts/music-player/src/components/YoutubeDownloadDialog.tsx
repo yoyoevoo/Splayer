@@ -379,6 +379,12 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
       const mergedTrackId = `${file.name}-${file.size}`;
       try {
         localStorage.setItem(`merged-video-trackid:${mergedTrackId}`, "1");
+        if (videosDir) {
+          localStorage.setItem(
+            `merged-video-path:${mergedTrackId}`,
+            `${videosDir}/${mergedFilename}`,
+          );
+        }
       } catch {}
 
       await updateTrackInfo(mergedTrackId, {
