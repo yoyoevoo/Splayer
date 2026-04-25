@@ -9,6 +9,7 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   Volume1,
   Volume2,
   VolumeX,
@@ -25,6 +26,7 @@ import { usePlayer } from "@/lib/player-context";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { LyricsPanel } from "./LyricsPanel";
+import { EQPanel } from "./EQPanel";
 
 export function PlayerControls() {
   const {
@@ -183,8 +185,22 @@ export function PlayerControls() {
             </div>
           </div>
 
-          {/* Right: lyrics + crossfade + volume */}
-          <div className="hidden md:flex items-center gap-1 w-52">
+          {/* Right: EQ + lyrics + crossfade + volume */}
+          <div className="hidden md:flex items-center gap-1 w-64">
+            <EQPanel
+              trigger={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-muted-foreground"
+                  data-testid="button-eq"
+                  aria-label="Equalizer"
+                  title="Equalizer"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+              }
+            />
             <Button
               size="icon"
               variant="ghost"

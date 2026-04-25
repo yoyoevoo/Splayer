@@ -21,6 +21,22 @@ import {
 } from "./idb";
 import type { Playlist, RepeatMode, Track } from "./types";
 
+export const EQ_BANDS = [
+  { freq: 60,    label: "60Hz",  type: "lowshelf"  as BiquadFilterType },
+  { freq: 250,   label: "250Hz", type: "peaking"   as BiquadFilterType },
+  { freq: 1000,  label: "1kHz",  type: "peaking"   as BiquadFilterType },
+  { freq: 4000,  label: "4kHz",  type: "peaking"   as BiquadFilterType },
+  { freq: 16000, label: "16kHz", type: "highshelf" as BiquadFilterType },
+];
+
+export const EQ_PRESETS: Record<string, number[]> = {
+  Flat:        [0,  0,  0,  0,  0],
+  "Bass Boost":[9,  5,  0,  0,  0],
+  Vocal:       [-3, 0,  6,  4,  0],
+  "Treble Boost":[0,0,  0,  6,  9],
+  "Lo-Fi":     [4,  2,  0,  0, -8],
+};
+
 interface PlayerContextValue {
   tracks: Track[];
   playlists: Playlist[];
@@ -38,6 +54,13 @@ interface PlayerContextValue {
   loadingFiles: boolean;
   crossfadeEnabled: boolean;
   crossfadeSecs: number;
+  // Equalizer
+  eqGains: number[];
+  eqPreset: string;
+  setEqGain: (bandIndex: number, gain: number) => void;
+  applyEqPreset: (name: string) => void;
+  // Visualizer
+  analyserRef: { current: AnalyserNode | null };
   addFiles: (files: File[]) => Promise<void>;
   playIndex: (index: number) => void;
   playFromList: (
@@ -97,6 +120,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const [crossfadeEnabled, setCrossfadeEnabledState] = useState(true);
   const [crossfadeSecs, setCrossfadeSecsState] = useState(3);
+
+  // Equalizer state (persisted in localStorage)
+  const [eqGains, setEqGainsState] = useState<number[]>(() => {
+    try { return JSON.parse(localStorage.getItem("eq-gains") ?? "null") ?? EQ_PRESETS.Flat; }
+    catch { return EQ_PRESETS.Flat; }
+  });
+  const [eqPreset, setEqPresetState] = useState<string>(
+    () => localStorage.getItem("eq-preset") ?? "Flat",
+  );
+
+  // Web Audio pipeline refs (lazy-init on first play)
+  const waCtxRef = useRef<AudioContext | null>(null);
+  const waAnalyserRef = useRef<AnalyserNode | null>(null);
+  const waFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const waConnectedRef = useRef<Set<HTMLAudioElement>>(new Set());
+  const eqGainsRef = useRef(eqGains);
+  eqGainsRef.current = eqGains;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const tracksRef = useRef<Track[]>([]);
@@ -176,6 +216,78 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     xfTimerRef.current = timerId;
   }, []);
 
+  // ── Web Audio Pipeline ──────────────────────────────────────────────────────
+  // Lazily initialise AudioContext + EQ + Analyser, then connect audio element.
+  const ensureWA = useCallback((el: HTMLAudioElement) => {
+    // Create context on first call (must happen from a user gesture)
+    if (!waCtxRef.current) {
+      const ctx = new AudioContext();
+      waCtxRef.current = ctx;
+
+      const gains = eqGainsRef.current;
+      const filters = EQ_BANDS.map(({ freq, type }, i) => {
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = 1;
+        f.gain.value = gains[i] ?? 0;
+        return f;
+      });
+      waFiltersRef.current = filters;
+
+      // Chain filters: filter[0] → filter[1] → ... → analyser → destination
+      for (let i = 0; i < filters.length - 1; i++) {
+        filters[i].connect(filters[i + 1]);
+      }
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.82;
+      waAnalyserRef.current = analyser;
+      filters[filters.length - 1].connect(analyser);
+      analyser.connect(ctx.destination);
+    }
+
+    // Connect this audio element once
+    if (!waConnectedRef.current.has(el)) {
+      const src = waCtxRef.current.createMediaElementSource(el);
+      src.connect(waFiltersRef.current[0] ?? waCtxRef.current.destination);
+      waConnectedRef.current.add(el);
+    }
+
+    // Resume if browser suspended the context
+    if (waCtxRef.current.state === "suspended") {
+      waCtxRef.current.resume().catch(() => {});
+    }
+  }, []);
+
+  const setEqGain = useCallback((bandIndex: number, gain: number) => {
+    const clamped = Math.max(-12, Math.min(12, gain));
+    setEqGainsState((prev) => {
+      const next = [...prev];
+      next[bandIndex] = clamped;
+      localStorage.setItem("eq-gains", JSON.stringify(next));
+      return next;
+    });
+    const f = waFiltersRef.current[bandIndex];
+    if (f) {
+      const t = waCtxRef.current?.currentTime ?? 0;
+      f.gain.setTargetAtTime(clamped, t, 0.02);
+    }
+  }, []);
+
+  const applyEqPreset = useCallback((name: string) => {
+    const gains = EQ_PRESETS[name] ?? EQ_PRESETS.Flat;
+    setEqGainsState(gains);
+    setEqPresetState(name);
+    localStorage.setItem("eq-gains", JSON.stringify(gains));
+    localStorage.setItem("eq-preset", name);
+    const ctx = waCtxRef.current;
+    waFiltersRef.current.forEach((f, i) => {
+      const t = ctx?.currentTime ?? 0;
+      f.gain.setTargetAtTime(gains[i], t, 0.02);
+    });
+  }, []);
+
   // Resolve effective queue (queue ids if set, else all tracks).
   const effectiveQueue: Track[] = useMemo(() => {
     if (currentQueueIds === null) return tracks;
@@ -216,9 +328,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       countedTrackIdRef.current = null;
     }
     setCurrentTrackId(trackId);
+    // Initialise Web Audio pipeline (requires user gesture, so call here)
+    ensureWA(audio);
     const effVol = mutedRef.current ? 0 : volumeRef.current;
     if (isNewSrc && crossfadeEnabledRef.current && !mutedRef.current) {
-      // Fade in the new track from silence
       audio.volume = 0;
       audio.play().catch(() => {});
       rampVolume(audio, 0, effVol, crossfadeSecsRef.current * 1000);
@@ -226,7 +339,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.volume = effVol;
       audio.play().catch(() => {});
     }
-  }, [cancelXf, rampVolume]);
+  }, [cancelXf, rampVolume, ensureWA]);
 
   const playIndex = useCallback(
     (index: number) => {
@@ -442,6 +555,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Start next track on secondary element, silent
       xfAudio.src = nextTrack.url;
       xfAudio.volume = 0;
+      ensureWA(xfAudio);
       xfAudio.play().catch(() => {});
 
       // Fade OUT primary
@@ -484,7 +598,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       clearInterval(poll);
       stopFades();
     };
-  }, []); // empty deps — all live state via refs
+  }, [ensureWA]); // ensureWA is stable (useCallback [])
 
   // Volume / mute sync — skip while crossfade is ramping
   useEffect(() => {
@@ -1033,6 +1147,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadingFiles,
       crossfadeEnabled,
       crossfadeSecs,
+      eqGains,
+      eqPreset,
+      setEqGain,
+      applyEqPreset,
+      analyserRef: waAnalyserRef,
       addFiles,
       playIndex,
       playFromList,
@@ -1077,6 +1196,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       loadingFiles,
       crossfadeEnabled,
       crossfadeSecs,
+      eqGains,
+      eqPreset,
+      setEqGain,
+      applyEqPreset,
       addFiles,
       playIndex,
       playFromList,

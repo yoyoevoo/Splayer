@@ -6,6 +6,7 @@ import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
+import { Visualizer } from "./Visualizer";
 
 export function NowPlaying() {
   const { currentTrack, setCustomCover } = usePlayer();
@@ -79,12 +80,17 @@ export function NowPlaying() {
           className="flex flex-col items-center gap-8 max-w-md w-full"
         >
           <div className="relative w-full max-w-sm group">
-            <AlbumCover
-              src={cover}
-              seed={currentTrack.title + currentTrack.artist}
-              size="xl"
-              className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
-            />
+            {/* Visualizer canvas sits behind album art */}
+            <Visualizer />
+            {/* z-index: 2 so album art sits above the visualizer canvas (z:1) */}
+            <div className="relative" style={{ zIndex: 2 }}>
+              <AlbumCover
+                src={cover}
+                seed={currentTrack.title + currentTrack.artist}
+                size="xl"
+                className="rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]"
+              />
+            </div>
             <button
               onClick={onPickCover}
               className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
