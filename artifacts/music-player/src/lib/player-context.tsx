@@ -78,6 +78,8 @@ interface PlayerContextValue {
   cycleRepeat: () => void;
   speed: number;
   setSpeed: (v: number) => void;
+  lyricsOpen: boolean;
+  setLyricsOpen: (o: boolean) => void;
   toggleCrossfade: () => void;
   setCrossfadeSecs: (s: number) => void;
   removeTrack: (id: string) => void;
@@ -129,6 +131,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const [crossfadeEnabled, setCrossfadeEnabledState] = useState(true);
   const [crossfadeSecs, setCrossfadeSecsState] = useState(3);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
   const [speed, setSpeedState] = useState<number>(() => {
     const saved = localStorage.getItem("player-speed");
     if (saved !== null) { const v = parseFloat(saved); if (!isNaN(v) && v > 0) return v; }
@@ -1260,6 +1263,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cycleRepeat,
       speed,
       setSpeed,
+      lyricsOpen,
+      setLyricsOpen,
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,
@@ -1311,6 +1316,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cycleRepeat,
       speed,
       setSpeed,
+      lyricsOpen,
+      setLyricsOpen,
       toggleCrossfade,
       setCrossfadeSecs,
       removeTrack,

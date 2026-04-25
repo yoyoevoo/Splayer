@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic2, MicOff, RefreshCw } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +68,7 @@ interface LyricsPanelProps {
   onOpenChange: (o: boolean) => void;
 }
 
-export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
+export function LyricsPanel({ open, onOpenChange: _onOpenChange }: LyricsPanelProps) {
   const { currentTrack, currentTime } = usePlayer();
   const [lyrics, setLyrics] = useState<LyricsState>({ status: "idle" });
   const [fetchedFor, setFetchedFor] = useState<string | null>(null);
@@ -200,94 +192,92 @@ export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
 
   const showRefresh = currentTrack && lyrics.status !== "loading";
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg h-[520px] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-card-border shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-sm font-medium">
-            <Mic2 className="w-4 h-4 text-primary" />
-            Lyrics
-            {currentTrack && (
-              <span className="text-muted-foreground font-normal ml-1 truncate max-w-[180px]">
-                — {currentTrack.title}
-              </span>
-            )}
-            {fromCache && (
-              <span className="text-[10px] text-muted-foreground/60 ml-1 font-normal hidden sm:inline">
-                (cached)
-              </span>
-            )}
-            {showRefresh && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                title="Re-fetch lyrics from the web"
-              >
-                <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} />
-                {fromCache ? "Refresh" : "Retry"}
-              </Button>
-            )}
-          </DialogTitle>
-        </DialogHeader>
+    <div
+      className="absolute inset-0 rounded-2xl overflow-hidden flex flex-col"
+      style={{ zIndex: 5 }}
+    >
+      {/* Dark semi-transparent backdrop — album art + visualizer remain visible behind */}
+      <div className="absolute inset-0 rounded-2xl bg-black/60" />
 
-        <ScrollArea className="flex-1">
-          <div className="px-6 py-5">
-            {!currentTrack && (
-              <p className="text-sm text-muted-foreground text-center py-10">
-                Nothing playing
-              </p>
-            )}
+      {/* Top bar: icon + cached label + refresh */}
+      <div className="relative z-10 flex items-center justify-between px-3 pt-2.5 pb-1 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Mic2 className="w-3.5 h-3.5 text-white/70" />
+          {fromCache && (
+            <span className="text-[10px] text-white/40 font-normal">cached</span>
+          )}
+        </div>
+        {showRefresh && (
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Re-fetch lyrics from the web"
+            className="flex items-center gap-1 text-[10px] text-white/50 hover:text-white/80 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} />
+            {fromCache ? "Refresh" : "Retry"}
+          </button>
+        )}
+      </div>
 
-            {lyrics.status === "loading" && (
-              <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Fetching lyrics…</span>
-              </div>
-            )}
+      {/* Scrollable lyrics area */}
+      <div className="relative z-10 flex-1 overflow-y-auto scroll-smooth px-4 pb-4">
 
-            {lyrics.status === "none" && (
-              <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
-                <MicOff className="w-6 h-6 opacity-40" />
-                <p className="text-sm">No lyrics found for this track</p>
-              </div>
-            )}
-
-            {lyrics.status === "synced" && (
-              <div className="space-y-1 text-center">
-                {lyrics.lines.map((line, i) => {
-                  const isActive = i === activeIdx;
-                  const isPast = i < activeIdx;
-                  return (
-                    <div
-                      key={i}
-                      ref={isActive ? activeLineRef : undefined}
-                      className={cn(
-                        "px-2 py-1 rounded transition-all duration-300 text-base leading-relaxed select-none",
-                        isActive
-                          ? "text-foreground font-semibold scale-105"
-                          : isPast
-                            ? "text-muted-foreground/50"
-                            : "text-muted-foreground/70",
-                      )}
-                    >
-                      {line.text}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {lyrics.status === "plain" && (
-              <div className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                {lyrics.text}
-              </div>
-            )}
+        {!currentTrack && (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-white/50">Nothing playing</p>
           </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+        )}
+
+        {lyrics.status === "loading" && (
+          <div className="flex flex-col items-center justify-center gap-2 h-full text-white/60">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs">Fetching lyrics…</span>
+          </div>
+        )}
+
+        {lyrics.status === "none" && (
+          <div className="flex flex-col items-center justify-center gap-2 h-full text-white/50">
+            <MicOff className="w-5 h-5 opacity-50" />
+            <p className="text-xs">No lyrics found</p>
+          </div>
+        )}
+
+        {lyrics.status === "synced" && (
+          <div className="space-y-0.5 text-center pt-4">
+            {lyrics.lines.map((line, i) => {
+              const isActive = i === activeIdx;
+              const isPast = i < activeIdx;
+              return (
+                <div
+                  key={i}
+                  ref={isActive ? activeLineRef : undefined}
+                  className={cn(
+                    "px-2 py-1 rounded transition-all duration-300 leading-snug select-none",
+                    isActive
+                      ? "text-white font-bold text-base scale-105"
+                      : isPast
+                        ? "text-white/40 text-sm"
+                        : "text-white/55 text-sm",
+                  )}
+                >
+                  {line.text}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {lyrics.status === "plain" && (
+          <div className="text-xs text-white/75 leading-relaxed whitespace-pre-wrap text-center pt-4">
+            {lyrics.text}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

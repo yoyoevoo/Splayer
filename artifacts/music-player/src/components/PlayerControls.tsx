@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Heart,
   Mic2,
@@ -25,7 +24,6 @@ import {
 import { usePlayer } from "@/lib/player-context";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { LyricsPanel } from "./LyricsPanel";
 import { EQPanel } from "./EQPanel";
 
 export function PlayerControls() {
@@ -50,6 +48,8 @@ export function PlayerControls() {
     cycleRepeat,
     speed,
     setSpeed,
+    lyricsOpen,
+    setLyricsOpen,
     toggleCrossfade,
     setCrossfadeSecs,
     toggleLike,
@@ -63,8 +63,6 @@ export function PlayerControls() {
     { value: 1.5,  label: "1.5×" },
     { value: 2,    label: "2×" },
   ];
-
-  const [lyricsOpen, setLyricsOpen] = useState(false);
 
   const total = duration || currentTrack?.duration || 0;
   const liked = currentTrack?.liked ?? false;
@@ -361,7 +359,6 @@ export function PlayerControls() {
         </div>
       </div>
 
-      <LyricsPanel open={lyricsOpen} onOpenChange={setLyricsOpen} />
     </>
   );
 }

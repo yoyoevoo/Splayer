@@ -7,6 +7,7 @@ import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { Visualizer } from "./Visualizer";
+import { LyricsPanel } from "./LyricsPanel";
 import { cn } from "@/lib/utils";
 
 function readVizPref(): boolean {
@@ -18,7 +19,7 @@ function writeVizPref(v: boolean) {
 }
 
 export function NowPlaying() {
-  const { currentTrack, setCustomCover } = usePlayer();
+  const { currentTrack, setCustomCover, lyricsOpen, setLyricsOpen } = usePlayer();
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [editOpen,   setEditOpen]   = useState(false);
   const [vizEnabled, setVizEnabled] = useState(readVizPref);
@@ -148,6 +149,9 @@ export function NowPlaying() {
             >
               <BarChart2 className="w-3.5 h-3.5" />
             </button>
+
+            {/* z:5 — lyrics overlay (sits on top of album art + visualizer) */}
+            <LyricsPanel open={lyricsOpen} onOpenChange={setLyricsOpen} />
           </div>
 
           {/* Track info */}
