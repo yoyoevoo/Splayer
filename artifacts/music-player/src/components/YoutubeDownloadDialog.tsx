@@ -437,26 +437,36 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
           <div className="space-y-3 pt-1">
 
             {/* ── Audio / Video media-mode toggle ── */}
-            <div className="flex rounded-lg border border-card-border overflow-hidden text-sm">
-              {(["audio", "video"] as MediaMode[]).map((m) => (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-0.5">
+                Preview &amp; Download Mode
+              </p>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  key={m}
-                  onClick={() => switchMediaMode(m)}
+                  onClick={() => switchMediaMode("audio")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
-                    mediaMode === m
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-card text-muted-foreground hover:text-foreground",
+                    "flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-3 font-semibold transition-all",
+                    mediaMode === "audio"
+                      ? "border-primary bg-primary text-primary-foreground shadow-md"
+                      : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
                   )}
                 >
-                  {m === "audio" ? (
-                    <Headphones className="h-3.5 w-3.5" />
-                  ) : (
-                    <Video className="h-3.5 w-3.5" />
-                  )}
-                  {m === "audio" ? "Audio" : "Video"}
+                  <span className="text-xl leading-none">🎵</span>
+                  <span className="text-sm">Audio</span>
                 </button>
-              ))}
+                <button
+                  onClick={() => switchMediaMode("video")}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 rounded-xl border-2 py-3 font-semibold transition-all",
+                    mediaMode === "video"
+                      ? "border-primary bg-primary text-primary-foreground shadow-md"
+                      : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                  )}
+                >
+                  <span className="text-xl leading-none">🎬</span>
+                  <span className="text-sm">Video</span>
+                </button>
+              </div>
             </div>
 
             {/* ── Search / URL mode toggle ── */}
