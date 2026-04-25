@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  ScanSearch,
   Search,
   Tags,
   Trash2,
@@ -39,6 +40,7 @@ import { AlbumCover } from "./AlbumCover";
 import { EditTrackDialog } from "./EditTrackDialog";
 import { BulkTagEditor } from "./BulkTagEditor";
 import { ArtworkFetcher } from "./ArtworkFetcher";
+import { DuplicateFinder } from "./DuplicateFinder";
 import { PlaylistsView } from "./PlaylistsView";
 import { PlaylistDetailView } from "./PlaylistDetailView";
 import { SmartPlaylistView } from "./SmartPlaylistView";
@@ -134,6 +136,7 @@ function LibraryView() {
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [artFetcherOpen, setArtFetcherOpen] = useState(false);
+  const [dupFinderOpen, setDupFinderOpen] = useState(false);
   const missingArtCount = tracks.filter((t) => !trackCoverUrl(t)).length;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -185,6 +188,17 @@ function LibraryView() {
             Library
           </h2>
           <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
+              onClick={() => setDupFinderOpen(true)}
+              title="Find Duplicates"
+              data-testid="button-find-duplicates"
+            >
+              <ScanSearch className="w-3.5 h-3.5" />
+              <span className="sr-only">Find Duplicates</span>
+            </Button>
             <Button
               size="sm"
               variant="ghost"
@@ -438,6 +452,10 @@ function LibraryView() {
       <ArtworkFetcher
         open={artFetcherOpen}
         onOpenChange={setArtFetcherOpen}
+      />
+      <DuplicateFinder
+        open={dupFinderOpen}
+        onOpenChange={setDupFinderOpen}
       />
       <NewPlaylistDialog
         open={newPlaylistFor !== null}
