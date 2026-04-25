@@ -459,17 +459,17 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                             Close preview
                           </Button>
                         </div>
-                        <iframe
+                        <audio
                           key={previewId}
+                          controls
+                          autoPlay
                           src={
                             embedPort
-                              ? `http://127.0.0.1:${embedPort}/?v=${previewId}`
+                              ? `http://127.0.0.1:${embedPort}/stream?v=${previewId}`
                               : undefined
                           }
-                          allow="autoplay; encrypted-media; fullscreen"
-                          allowFullScreen
-                          className="w-full"
-                          style={{ height: "195px", border: "none", display: "block" }}
+                          className="w-full px-3 py-2"
+                          style={{ display: "block" }}
                         />
                       </div>
                     )}

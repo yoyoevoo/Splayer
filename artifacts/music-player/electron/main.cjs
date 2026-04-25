@@ -16,8 +16,8 @@ let embedServerPort = 0;
 const SAFE_VIDEO_ID = /^[A-Za-z0-9_-]{1,20}$/;
 
 const embedServer = http.createServer((req, res) => {
-  const url  = new URL(req.url, "http://localhost");
-  const vid  = url.searchParams.get("v") || "";
+  const parsedUrl = new URL(req.url, "http://localhost");
+  const vid       = parsedUrl.searchParams.get("v") || "";
 
   if (!SAFE_VIDEO_ID.test(vid)) {
     res.writeHead(400);
@@ -25,25 +25,48 @@ const embedServer = http.createServer((req, res) => {
     return;
   }
 
-  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  res.end(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; height: 100vh; overflow: hidden; }
-    iframe { width: 100%; height: 100%; border: none; display: block; }
-  </style>
-</head>
-<body>
-  <iframe
-    src="https://www.youtube.com/embed/${vid}?autoplay=1&controls=1&rel=0&modestbranding=1"
-    allow="autoplay; encrypted-media; fullscreen"
-    allowfullscreen
-  ></iframe>
-</body>
-</html>`);
+  // /stream?v=VIDEOID — pipe yt-dlp audio output straight to the browser's
+  // <audio> element; works for every video regardless of embedding restrictions.
+  if (parsedUrl.pathname === "/stream") {
+    const ytUrl = `https://www.youtube.com/watch?v=${vid}`;
+
+    // Prefer webm/opus (native in Electron/Chromium). Fall back to best audio.
+    const proc = spawn(
+      getYtDlpPath(),
+      [
+        "-f", "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+        "--no-playlist",
+        "--no-warnings",
+        "-o", "-",
+        ytUrl,
+      ],
+      { env: { ...process.env } },
+    );
+
+    res.writeHead(200, {
+      "Content-Type":      "audio/webm",
+      "Transfer-Encoding": "chunked",
+      "Cache-Control":     "no-cache",
+    });
+
+    proc.stdout.pipe(res);
+    proc.stderr.on("data", () => {}); // suppress console noise
+
+    proc.on("error", () => {
+      try { res.end(); } catch (_) {}
+    });
+
+    // Kill yt-dlp as soon as the client disconnects (close preview / change track)
+    req.on("close", () => {
+      try { proc.kill("SIGTERM"); } catch (_) {}
+    });
+
+    return;
+  }
+
+  // Fallback 404
+  res.writeHead(404);
+  res.end("Not found");
 });
 
 embedServer.listen(0, "127.0.0.1", () => {
