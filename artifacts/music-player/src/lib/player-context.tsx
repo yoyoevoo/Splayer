@@ -109,57 +109,72 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   currentTrackIdRef.current = currentTrackId;
   const countedTrackIdRef = useRef<string | null>(null);
 
-  // Crossfade refs (avoid stale closures in event handlers)
+  // Crossfade refs
   const crossfadeEnabledRef = useRef(true);
   const crossfadeSecsRef = useRef(3);
   const volumeRef = useRef(0.85);
   const mutedRef = useRef(false);
-  const xfTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const xfPhaseRef = useRef<"idle" | "out" | "in">("idle");
+  const shuffleRef = useRef(false);
+  const repeatRef = useRef<RepeatMode>("off");
 
   crossfadeEnabledRef.current = crossfadeEnabled;
   crossfadeSecsRef.current = crossfadeSecs;
   volumeRef.current = volume;
   mutedRef.current = muted;
+  shuffleRef.current = shuffle;
+  repeatRef.current = repeat;
 
-  function clearXfTimer() {
-    if (xfTimerRef.current !== null) {
-      clearInterval(xfTimerRef.current);
-      xfTimerRef.current = null;
-    }
+  // Two audio elements for true crossfade (simultaneous playback)
+  if (!audioRef.current && typeof window !== "undefined") {
+    audioRef.current = new Audio();
+    audioRef.current.preload = "auto";
+  }
+  const xfAudioRef = useRef<HTMLAudioElement | null>(null);
+  if (!xfAudioRef.current && typeof window !== "undefined") {
+    xfAudioRef.current = new Audio();
+    xfAudioRef.current.preload = "auto";
   }
 
-  function startVolumeRamp(
+  // Crossfade ramp state
+  const xfTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);   // for manual fade-in
+  const xfFadeOutRef = useRef<ReturnType<typeof setInterval> | null>(null); // for auto crossfade
+  const xfFadeInRef = useRef<ReturnType<typeof setInterval> | null>(null);  // for auto crossfade
+  const xfActiveRef = useRef(false); // true while two-element crossfade is running
+
+  // Cancel ALL active fade timers + stop xfAudio (called on manual track change)
+  const cancelXf = useCallback(() => {
+    if (xfTimerRef.current)  { clearInterval(xfTimerRef.current);  xfTimerRef.current  = null; }
+    if (xfFadeOutRef.current) { clearInterval(xfFadeOutRef.current); xfFadeOutRef.current = null; }
+    if (xfFadeInRef.current)  { clearInterval(xfFadeInRef.current);  xfFadeInRef.current  = null; }
+    xfActiveRef.current = false;
+    const xfAudio = xfAudioRef.current;
+    if (xfAudio) { xfAudio.pause(); xfAudio.volume = 0; xfAudio.removeAttribute("src"); }
+  }, []);
+
+  // Ramp a single audio element's volume (for manual track-change fade-in)
+  const rampVolume = useCallback((
     audio: HTMLAudioElement,
     fromVol: number,
     toVol: number,
     durationMs: number,
-    phase: "out" | "in",
-    onDone?: () => void,
-  ) {
-    clearXfTimer();
-    xfPhaseRef.current = phase;
-    const steps = Math.max(1, Math.round(durationMs / 40));
+  ) => {
+    if (xfTimerRef.current) { clearInterval(xfTimerRef.current); xfTimerRef.current = null; }
+    audio.volume = Math.max(0, Math.min(1, fromVol));
+    if (durationMs <= 0) { audio.volume = toVol; return; }
+    const steps = Math.max(1, Math.round(durationMs / 50));
     const delta = (toVol - fromVol) / steps;
     let step = 0;
-    audio.volume = Math.max(0, Math.min(1, fromVol));
-    xfTimerRef.current = setInterval(() => {
+    const timerId = setInterval(() => {
       step++;
-      const vol = Math.max(0, Math.min(1, fromVol + delta * step));
-      audio.volume = vol;
+      audio.volume = Math.max(0, Math.min(1, fromVol + delta * step));
       if (step >= steps) {
-        audio.volume = toVol;
-        clearXfTimer();
-        xfPhaseRef.current = "idle";
-        onDone?.();
+        audio.volume = Math.max(0, Math.min(1, toVol));
+        clearInterval(timerId);
+        if (xfTimerRef.current === timerId) xfTimerRef.current = null;
       }
-    }, 40);
-  }
-
-  if (!audioRef.current && typeof window !== "undefined") {
-    audioRef.current = new Audio();
-    audioRef.current.preload = "metadata";
-  }
+    }, 50);
+    xfTimerRef.current = timerId;
+  }, []);
 
   // Resolve effective queue (queue ids if set, else all tracks).
   const effectiveQueue: Track[] = useMemo(() => {
@@ -193,24 +208,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     const track = tracksRef.current.find((t) => t.id === trackId);
     if (!audio || !track) return;
+    // Cancel any active crossfade
+    cancelXf();
     const isNewSrc = audio.src !== track.url;
     if (isNewSrc) {
       audio.src = track.url;
       countedTrackIdRef.current = null;
     }
     setCurrentTrackId(trackId);
+    const effVol = mutedRef.current ? 0 : volumeRef.current;
     if (isNewSrc && crossfadeEnabledRef.current && !mutedRef.current) {
-      const effVol = volumeRef.current;
+      // Fade in the new track from silence
       audio.volume = 0;
       audio.play().catch(() => {});
-      startVolumeRamp(audio, 0, effVol, crossfadeSecsRef.current * 1000, "in");
+      rampVolume(audio, 0, effVol, crossfadeSecsRef.current * 1000);
     } else {
-      clearXfTimer();
-      xfPhaseRef.current = "idle";
-      if (!mutedRef.current) audio.volume = volumeRef.current;
+      audio.volume = effVol;
       audio.play().catch(() => {});
     }
-  }, []);
+  }, [cancelXf, rampVolume]);
 
   const playIndex = useCallback(
     (index: number) => {
@@ -323,38 +339,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     next();
   }, [repeat, shuffle, currentTrackId, next, playTrackById]);
 
-  // Audio event listeners
+  // Audio event listeners — re-attaches when handleEnded changes (i.e. track changes)
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => {
-      const t = audio.currentTime;
-      setCurrentTime(t);
-      if (
-        crossfadeEnabledRef.current &&
-        !mutedRef.current &&
-        audio.duration > 0 &&
-        xfPhaseRef.current !== "out"
-      ) {
-        const remaining = audio.duration - t;
-        const xfSecs = crossfadeSecsRef.current;
-        if (remaining > 0 && remaining <= xfSecs) {
-          startVolumeRamp(
-            audio,
-            audio.volume,
-            0,
-            remaining * 1000,
-            "out",
-          );
-        }
-      }
-    };
+    const onTime = () => setCurrentTime(audio.currentTime);
     const onMeta = () => setDuration(audio.duration || 0);
     const onPlay = () => {
       setIsPlaying(true);
       const id = currentTrackIdRef.current;
       if (!id) return;
-      // Count a play once per track-load (only when starting from the top).
       if (audio.currentTime > 2) return;
       if (countedTrackIdRef.current === id) return;
       countedTrackIdRef.current = id;
@@ -362,11 +356,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setTracks((prev) =>
         prev.map((t) =>
           t.id === id
-            ? {
-                ...t,
-                playCount: (t.playCount ?? 0) + 1,
-                lastPlayedAt: now,
-              }
+            ? { ...t, playCount: (t.playCount ?? 0) + 1, lastPlayedAt: now }
             : t,
         ),
       );
@@ -377,7 +367,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }).catch((e) => console.warn("Failed to save play count", e));
     };
     const onPause = () => setIsPlaying(false);
-    const onEnded = () => handleEnded();
+    // Skip ended when crossfade already handled the transition
+    const onEnded = () => { if (!xfActiveRef.current) handleEnded(); };
 
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
@@ -395,13 +386,112 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [handleEnded]);
 
-  // Volume / mute sync — don't fight active crossfade ramps
+  // True crossfade — runs once, polls via refs only (no stale closures)
+  useEffect(() => {
+    const stopFades = () => {
+      if (xfFadeOutRef.current) { clearInterval(xfFadeOutRef.current); xfFadeOutRef.current = null; }
+      if (xfFadeInRef.current)  { clearInterval(xfFadeInRef.current);  xfFadeInRef.current  = null; }
+    };
+
+    const poll = setInterval(() => {
+      const audio = audioRef.current;
+      const xfAudio = xfAudioRef.current;
+      if (
+        !audio || !xfAudio ||
+        xfActiveRef.current ||
+        !crossfadeEnabledRef.current ||
+        mutedRef.current ||
+        audio.paused ||
+        !isFinite(audio.duration) ||
+        audio.duration <= 0
+      ) return;
+
+      const remaining = audio.duration - audio.currentTime;
+      const xfSecs = crossfadeSecsRef.current;
+      if (remaining <= 0 || remaining > xfSecs) return;
+
+      // Determine next track (same logic as next())
+      const list = queueRef.current;
+      const currentId = currentTrackIdRef.current;
+      if (!currentId) return;
+      const idx = list.findIndex((t) => t.id === currentId);
+      if (idx < 0) return;
+
+      let nextIdx: number;
+      if (shuffleRef.current) {
+        if (list.length <= 1) return;
+        do { nextIdx = Math.floor(Math.random() * list.length); } while (nextIdx === idx);
+      } else {
+        nextIdx = idx + 1;
+        if (nextIdx >= list.length) {
+          if (repeatRef.current === "all") nextIdx = 0;
+          else return;
+        }
+      }
+      if (nextIdx === idx) return;
+
+      const nextTrack = list[nextIdx];
+      xfActiveRef.current = true;
+      stopFades();
+
+      const durationMs = Math.max(100, remaining * 1000);
+      const steps = Math.max(1, Math.round(durationMs / 50));
+      const primaryStartVol = audio.volume;
+      const targetVol = volumeRef.current;
+
+      // Start next track on secondary element, silent
+      xfAudio.src = nextTrack.url;
+      xfAudio.volume = 0;
+      xfAudio.play().catch(() => {});
+
+      // Fade OUT primary
+      let step1 = 0;
+      xfFadeOutRef.current = setInterval(() => {
+        step1++;
+        audio.volume = Math.max(0, primaryStartVol * (1 - step1 / steps));
+        if (step1 >= steps) {
+          audio.volume = 0;
+          clearInterval(xfFadeOutRef.current!); xfFadeOutRef.current = null;
+        }
+      }, 50);
+
+      // Fade IN secondary — on completion, swap elements & update React state
+      let step2 = 0;
+      xfFadeInRef.current = setInterval(() => {
+        step2++;
+        xfAudio.volume = Math.min(targetVol, targetVol * (step2 / steps));
+        if (step2 >= steps) {
+          xfAudio.volume = targetVol;
+          clearInterval(xfFadeInRef.current!); xfFadeInRef.current = null;
+
+          // Swap: xfAudio becomes the new primary
+          // The audio event useEffect uses a local `audio` var captured at run time,
+          // so cleanup removes from old primary; next run adds to new primary.
+          const oldPrimary = audioRef.current!;
+          audioRef.current = xfAudio;
+          xfAudioRef.current = oldPrimary;
+          oldPrimary.pause();
+          oldPrimary.volume = targetVol;
+
+          xfActiveRef.current = false;
+          countedTrackIdRef.current = null;
+          setCurrentTrackId(nextTrack.id);
+        }
+      }, 50);
+    }, 200);
+
+    return () => {
+      clearInterval(poll);
+      stopFades();
+    };
+  }, []); // empty deps — all live state via refs
+
+  // Volume / mute sync — skip while crossfade is ramping
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.muted = muted;
-    // If a crossfade ramp is active, don't override volume mid-ramp
-    if (xfPhaseRef.current === "idle") {
+    if (!xfActiveRef.current) {
       audio.volume = muted ? 0 : volume;
     }
   }, [volume, muted]);
