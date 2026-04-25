@@ -171,3 +171,66 @@ export function accentFgFromHex(hex: string): string {
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.55 ? "220 20% 10%" : "0 0% 100%";
 }
+
+export function isDarkColor(hex: string): boolean {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+}
+
+export function buildUserThemeVars(
+  bgHex: string,
+  panelHex: string,
+  textHex: string,
+  accentHex: string,
+): Record<string, string> {
+  const bgHsl     = hexToHsl(bgHex);
+  const panelHsl  = hexToHsl(panelHex);
+  const textHsl   = hexToHsl(textHex);
+  const accentHsl = hexToHsl(accentHex);
+  const accentFg  = accentFgFromHex(accentHex);
+  const dark      = isDarkColor(bgHex);
+
+  const panelParts = panelHsl.split(/[\s%]+/).map(Number);
+  const textParts  = textHsl.split(/[\s%]+/).map(Number);
+
+  const borderL   = dark
+    ? Math.min(panelParts[2] + 9, 90)
+    : Math.max(panelParts[2] - 9, 5);
+  const borderHsl = `${panelParts[0]} ${panelParts[1]}% ${borderL}%`;
+
+  const mutedL    = dark
+    ? Math.max(textParts[2] - 28, 25)
+    : Math.min(textParts[2] + 28, 75);
+  const mutedFgHsl = `${textParts[0]} ${Math.max(textParts[1] - 10, 0)}% ${mutedL}%`;
+
+  const btnOutline   = dark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
+  const badgeOutline = dark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.05)";
+  const intensity    = dark ? "9" : "-8";
+  const elevate1     = dark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.03)";
+  const elevate2     = dark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.08)";
+
+  return {
+    "button-outline": btnOutline,
+    "badge-outline": badgeOutline,
+    "opaque-button-border-intensity": intensity,
+    "elevate-1": elevate1,
+    "elevate-2": elevate2,
+    background: bgHsl, foreground: textHsl, border: borderHsl,
+    card: panelHsl, "card-foreground": textHsl, "card-border": borderHsl,
+    sidebar: panelHsl, "sidebar-foreground": textHsl, "sidebar-border": borderHsl,
+    "sidebar-primary": accentHsl, "sidebar-primary-foreground": accentFg,
+    "sidebar-accent": borderHsl, "sidebar-accent-foreground": textHsl,
+    "sidebar-ring": accentHsl,
+    popover: panelHsl, "popover-foreground": textHsl, "popover-border": borderHsl,
+    primary: accentHsl, "primary-foreground": accentFg,
+    secondary: borderHsl, "secondary-foreground": textHsl,
+    muted: borderHsl, "muted-foreground": mutedFgHsl,
+    accent: borderHsl, "accent-foreground": textHsl,
+    input: borderHsl, ring: accentHsl,
+    destructive: "0 85% 50%", "destructive-foreground": "0 0% 100%",
+    "chart-1": accentHsl, "chart-2": "45 80% 60%",
+    "chart-3": "10 70% 50%", "chart-4": "340 60% 55%", "chart-5": "20 90% 65%",
+  };
+}

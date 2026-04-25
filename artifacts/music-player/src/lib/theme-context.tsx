@@ -14,14 +14,27 @@ import {
   hslToHex,
 } from "./themes";
 
-const LS_THEME  = "app-theme-id";
-const LS_ACCENT = "app-custom-accent";
+const LS_THEME       = "app-theme-id";
+const LS_ACCENT      = "app-custom-accent";
+const LS_USER_THEMES = "app-user-themes";
+
+function loadUserThemes(): AppTheme[] {
+  try {
+    const raw = localStorage.getItem(LS_USER_THEMES);
+    return raw ? (JSON.parse(raw) as AppTheme[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 interface ThemeContextValue {
   themeId: string;
   customAccent: string | null;
+  userThemes: AppTheme[];
   setTheme: (id: string) => void;
   setCustomAccent: (hex: string | null) => void;
+  saveUserTheme: (theme: AppTheme) => void;
+  deleteUserTheme: (id: string) => void;
   currentTheme: AppTheme;
   currentAccentHex: string;
 }
@@ -61,8 +74,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [customAccent, setCustomAccentState] = useState<string | null>(() =>
     localStorage.getItem(LS_ACCENT),
   );
+  const [userThemes, setUserThemes] = useState<AppTheme[]>(loadUserThemes);
 
-  const currentTheme = getTheme(themeId);
+  const allThemes = [...BUILT_IN_THEMES, ...userThemes];
+
+  const currentTheme =
+    allThemes.find((t) => t.id === themeId) ?? BUILT_IN_THEMES[0];
 
   const currentAccentHex: string = customAccent
     ? customAccent
@@ -86,11 +103,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setCustomAccentState(hex);
   }, []);
 
+  const saveUserTheme = useCallback((theme: AppTheme) => {
+    setUserThemes((prev) => {
+      const next = [...prev.filter((t) => t.id !== theme.id), theme];
+      localStorage.setItem(LS_USER_THEMES, JSON.stringify(next));
+      return next;
+    });
+    localStorage.setItem(LS_THEME, theme.id);
+    setThemeId(theme.id);
+  }, []);
+
+  const deleteUserTheme = useCallback((id: string) => {
+    setUserThemes((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      localStorage.setItem(LS_USER_THEMES, JSON.stringify(next));
+      return next;
+    });
+    setThemeId((cur) => (cur === id ? "dark" : cur));
+  }, []);
+
   const value: ThemeContextValue = {
     themeId,
     customAccent,
+    userThemes,
     setTheme,
     setCustomAccent,
+    saveUserTheme,
+    deleteUserTheme,
     currentTheme,
     currentAccentHex,
   };
