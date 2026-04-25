@@ -112,7 +112,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolumeState] = useState(0.85);
+  const [volume, setVolumeState] = useState<number>(() => {
+    const saved = localStorage.getItem("player-volume");
+    if (saved !== null) {
+      const v = parseFloat(saved);
+      if (!isNaN(v)) return Math.min(1, Math.max(0, v));
+    }
+    return 0.85;
+  });
   const [muted, setMuted] = useState(false);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
@@ -660,6 +667,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setVolume = useCallback(
     (v: number) => {
       setVolumeState(v);
+      localStorage.setItem("player-volume", String(v));
       if (v > 0 && muted) setMuted(false);
     },
     [muted],

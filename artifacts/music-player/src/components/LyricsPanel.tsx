@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Mic2, MicOff } from "lucide-react";
+import { Loader2, Mic2, MicOff, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,41 @@ type LyricsState =
   | { status: "plain"; text: string }
   | { status: "none" };
 
+interface CacheEntry {
+  syncedLyrics?: string;
+  plainLyrics?: string;
+  notFound?: boolean;
+}
+
+function cacheKey(title: string, artist: string): string {
+  return `lyrics-v1:${title.toLowerCase().trim()}|${artist.toLowerCase().trim()}`;
+}
+
+function loadFromCache(key: string): LyricsState | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const entry: CacheEntry = JSON.parse(raw);
+    if (entry.notFound) return { status: "none" };
+    if (entry.syncedLyrics) {
+      const lines = parseLrc(entry.syncedLyrics);
+      if (lines.length > 0) return { status: "synced", lines };
+    }
+    if (entry.plainLyrics) return { status: "plain", text: entry.plainLyrics };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveToCache(key: string, entry: CacheEntry) {
+  try {
+    localStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // storage full — skip silently
+  }
+}
+
 interface LyricsPanelProps {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -44,9 +80,70 @@ export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
   const { currentTrack, currentTime } = usePlayer();
   const [lyrics, setLyrics] = useState<LyricsState>({ status: "idle" });
   const [fetchedFor, setFetchedFor] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const activeLineRef = useRef<HTMLDivElement>(null);
 
-  // Fetch lyrics whenever track or panel changes
+  const doFetch = (trackId: string, title: string, artist: string, album: string, duration: number, bust: boolean) => {
+    const key = cacheKey(title, artist);
+
+    if (!bust) {
+      const cached = loadFromCache(key);
+      if (cached) {
+        setLyrics(cached);
+        setFetchedFor(trackId);
+        setFromCache(true);
+        setRefreshing(false);
+        return;
+      }
+    } else {
+      localStorage.removeItem(key);
+    }
+
+    setFromCache(false);
+    setLyrics({ status: "loading" });
+    setFetchedFor(trackId);
+
+    const params = new URLSearchParams({
+      track_name: title,
+      artist_name: artist,
+      album_name: album,
+      duration: Math.round(duration).toString(),
+    });
+
+    fetch(`https://lrclib.net/api/get?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) {
+          saveToCache(key, { notFound: true });
+          setLyrics({ status: "none" });
+          return;
+        }
+        if (data.syncedLyrics) {
+          const lines = parseLrc(data.syncedLyrics);
+          if (lines.length > 0) {
+            saveToCache(key, { syncedLyrics: data.syncedLyrics });
+            setLyrics({ status: "synced", lines });
+            setRefreshing(false);
+            return;
+          }
+        }
+        if (data.plainLyrics) {
+          saveToCache(key, { plainLyrics: data.plainLyrics });
+          setLyrics({ status: "plain", text: data.plainLyrics });
+        } else {
+          saveToCache(key, { notFound: true });
+          setLyrics({ status: "none" });
+        }
+        setRefreshing(false);
+      })
+      .catch(() => {
+        setLyrics({ status: "none" });
+        setRefreshing(false);
+      });
+  };
+
+  // Fetch/load lyrics whenever track or panel changes
   useEffect(() => {
     if (!open || !currentTrack) {
       if (!currentTrack) setLyrics({ status: "idle" });
@@ -54,45 +151,36 @@ export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
     }
     if (fetchedFor === currentTrack.id) return;
 
-    setFetchedFor(currentTrack.id);
-    setLyrics({ status: "loading" });
-
-    const params = new URLSearchParams({
-      track_name: currentTrack.title,
-      artist_name: currentTrack.artist,
-      album_name: currentTrack.album,
-      duration: Math.round(currentTrack.duration).toString(),
-    });
-
-    fetch(`https://lrclib.net/api/get?${params}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) {
-          setLyrics({ status: "none" });
-          return;
-        }
-        if (data.syncedLyrics) {
-          const lines = parseLrc(data.syncedLyrics);
-          if (lines.length > 0) {
-            setLyrics({ status: "synced", lines });
-            return;
-          }
-        }
-        if (data.plainLyrics) {
-          setLyrics({ status: "plain", text: data.plainLyrics });
-        } else {
-          setLyrics({ status: "none" });
-        }
-      })
-      .catch(() => setLyrics({ status: "none" }));
-  }, [open, currentTrack, fetchedFor]);
+    doFetch(
+      currentTrack.id,
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.album,
+      currentTrack.duration,
+      false,
+    );
+  }, [open, currentTrack, fetchedFor]); // eslint-disable-line
 
   // Reset when track changes
   useEffect(() => {
     if (currentTrack?.id !== fetchedFor) {
       setFetchedFor(null);
+      setFromCache(false);
     }
   }, [currentTrack?.id, fetchedFor]);
+
+  const handleRefresh = () => {
+    if (!currentTrack || refreshing) return;
+    setRefreshing(true);
+    doFetch(
+      currentTrack.id,
+      currentTrack.title,
+      currentTrack.artist,
+      currentTrack.album,
+      currentTrack.duration,
+      true,
+    );
+  };
 
   // Determine active line index
   let activeIdx = -1;
@@ -106,12 +194,11 @@ export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
   // Auto-scroll active line into view
   useEffect(() => {
     if (activeLineRef.current) {
-      activeLineRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      activeLineRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [activeIdx]);
+
+  const showRefresh = currentTrack && lyrics.status !== "loading";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -121,9 +208,27 @@ export function LyricsPanel({ open, onOpenChange }: LyricsPanelProps) {
             <Mic2 className="w-4 h-4 text-primary" />
             Lyrics
             {currentTrack && (
-              <span className="text-muted-foreground font-normal ml-1 truncate max-w-xs">
+              <span className="text-muted-foreground font-normal ml-1 truncate max-w-[180px]">
                 — {currentTrack.title}
               </span>
+            )}
+            {fromCache && (
+              <span className="text-[10px] text-muted-foreground/60 ml-1 font-normal hidden sm:inline">
+                (cached)
+              </span>
+            )}
+            {showRefresh && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title="Re-fetch lyrics from the web"
+              >
+                <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} />
+                {fromCache ? "Refresh" : "Retry"}
+              </Button>
             )}
           </DialogTitle>
         </DialogHeader>
