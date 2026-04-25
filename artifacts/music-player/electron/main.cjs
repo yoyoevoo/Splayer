@@ -1,10 +1,56 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
+const http = require("http");
 
 app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("disable-setuid-sandbox");
+
+// ── Local YouTube embed server ────────────────────────────────────────────────
+// Electron loads from file://, so YouTube's iframe embed blocks with Error 153
+// (null origin). We serve a tiny HTML shim from http://localhost so YouTube
+// sees a valid http origin and allows the embed.
+let embedServerPort = 0;
+
+const SAFE_VIDEO_ID = /^[A-Za-z0-9_-]{1,20}$/;
+
+const embedServer = http.createServer((req, res) => {
+  const url  = new URL(req.url, "http://localhost");
+  const vid  = url.searchParams.get("v") || "";
+
+  if (!SAFE_VIDEO_ID.test(vid)) {
+    res.writeHead(400);
+    res.end("Bad request");
+    return;
+  }
+
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; height: 100vh; overflow: hidden; }
+    iframe { width: 100%; height: 100%; border: none; display: block; }
+  </style>
+</head>
+<body>
+  <iframe
+    src="https://www.youtube.com/embed/${vid}?autoplay=1&controls=1&rel=0&modestbranding=1"
+    allow="autoplay; encrypted-media; fullscreen"
+    allowfullscreen
+  ></iframe>
+</body>
+</html>`);
+});
+
+embedServer.listen(0, "127.0.0.1", () => {
+  embedServerPort = embedServer.address().port;
+});
+
+ipcMain.handle("get-embed-port", () => embedServerPort);
 
 function createWindow() {
   const win = new BrowserWindow({

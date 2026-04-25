@@ -44,6 +44,9 @@ declare global {
       /** Download audio from a YouTube URL. */
       ytDownload: (url: string) => Promise<YtDownloadResult | { error: string }>;
 
+      /** Returns the port of the local YouTube embed proxy server. */
+      getEmbedPort: () => Promise<number>;
+
       /**
        * Subscribe to download-progress events.
        * Returns an unsubscribe function.

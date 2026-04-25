@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Download audio from a YouTube URL. Returns bytes + metadata. */
   ytDownload: (url) => ipcRenderer.invoke("yt-download", url),
 
+  /** Returns the port of the local YouTube embed proxy server. */
+  getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
+
   /**
    * Subscribe to download progress events.
    * Returns an unsubscribe function — call it when done.

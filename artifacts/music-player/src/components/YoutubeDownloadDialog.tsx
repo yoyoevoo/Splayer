@@ -89,8 +89,18 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
   const [progress,      setProgress]      = useState(0);
   const [errorMsg,      setErrorMsg]      = useState("");
 
+  // Port of the local embed proxy server (avoids YouTube Error 153 on file://)
+  const [embedPort,     setEmbedPort]     = useState(0);
+
   const cleanupRef = useRef<(() => void) | null>(null);
   const api        = window.electronAPI;
+
+  // Fetch the embed server port once when the dialog first opens
+  useEffect(() => {
+    if (open && api?.getEmbedPort && embedPort === 0) {
+      api.getEmbedPort().then(setEmbedPort);
+    }
+  }, [open, api, embedPort]);
 
   // Reset when dialog closes
   useEffect(() => {
@@ -451,8 +461,12 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                         </div>
                         <iframe
                           key={previewId}
-                          src={`https://www.youtube.com/embed/${previewId}?autoplay=1&controls=1&rel=0`}
-                          allow="autoplay; encrypted-media"
+                          src={
+                            embedPort
+                              ? `http://127.0.0.1:${embedPort}/?v=${previewId}`
+                              : undefined
+                          }
+                          allow="autoplay; encrypted-media; fullscreen"
                           allowFullScreen
                           className="w-full"
                           style={{ height: "195px", border: "none", display: "block" }}
