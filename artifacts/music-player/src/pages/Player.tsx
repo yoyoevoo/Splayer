@@ -8,6 +8,7 @@ import {
   Minimize2,
   Music,
   Palette,
+  Settings,
   Upload,
   Youtube,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { AppearanceDialog } from "@/components/AppearanceDialog";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { YoutubeDownloadDialog } from "@/components/YoutubeDownloadDialog";
+import { SettingsDialog } from "@/components/SettingsDialog";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Player() {
@@ -44,6 +46,7 @@ export default function Player() {
 
   const [shortcutsOpen,   setShortcutsOpen]   = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [settingsOpen,   setSettingsOpen]   = useState(false);
   const [ytOpen,        setYtOpen]        = useState(false);
   const [miniMode,      setMiniMode]      = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
@@ -191,6 +194,18 @@ export default function Player() {
           <Button
             size="icon"
             variant="ghost"
+            onClick={() => setSettingsOpen(true)}
+            className="h-8 w-8 text-muted-foreground"
+            data-testid="button-settings"
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Button>
+
+          <Button
+            size="icon"
+            variant="ghost"
             onClick={() => setShortcutsOpen(true)}
             className="h-8 w-8 text-muted-foreground"
             data-testid="button-shortcuts"
@@ -248,6 +263,7 @@ export default function Player() {
 
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <AppearanceDialog open={appearanceOpen} onOpenChange={setAppearanceOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <YoutubeDownloadDialog open={ytOpen} onOpenChange={setYtOpen} />
 
       <input ref={fileRef} type="file"
