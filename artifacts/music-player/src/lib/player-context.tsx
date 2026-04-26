@@ -52,6 +52,9 @@ interface PlayerContextValue {
   shuffle: boolean;
   repeat: RepeatMode;
   loadingFiles: boolean;
+  isScanning: boolean;
+  scanStatus: string | null;
+  autoScanLibrary: (manual?: boolean) => Promise<void>;
   crossfadeEnabled: boolean;
   crossfadeSecs: number;
   // Equalizer
@@ -129,6 +132,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [isScanning,   setIsScanning]   = useState(false);
+  const [scanStatus,   setScanStatus]   = useState<string | null>(null);
+  const scanStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [crossfadeEnabled, setCrossfadeEnabledState] = useState(true);
   const [crossfadeSecs, setCrossfadeSecsState] = useState(3);
@@ -1265,6 +1271,89 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // ── Auto-scan library ────────────────────────────────────────────────────────
+  const autoScanLibrary = useCallback(async (manual = false) => {
+    if (!window.electronAPI?.scanLibrary || !window.electronAPI?.readFile) return;
+    setIsScanning(true);
+    setScanStatus(null);
+    if (scanStatusTimerRef.current) clearTimeout(scanStatusTimerRef.current);
+    try {
+      const found = await window.electronAPI.scanLibrary();
+      // Build a map of trackId → file info (generateTrackId uses name+size)
+      const foundMap = new Map(
+        found.map(f => [generateTrackId({ name: f.name, size: f.size }), f]),
+      );
+      // Read all stored IDs from IDB directly (avoids React-state timing issues)
+      const storedTracks = await getAllStoredTracks();
+      const existingIds = new Set(storedTracks.map(t => t.id));
+      // Tracks on disk that are new to the library
+      const toAdd = [...foundMap.entries()].filter(([id]) => !existingIds.has(id));
+      // On manual refresh: remove tracks that were auto-scanned but are now gone from disk
+      let removed = 0;
+      if (manual) {
+        let registry: { id: string }[] = [];
+        try { registry = JSON.parse(localStorage.getItem("auto-scan-registry") ?? "[]"); }
+        catch (_) {}
+        for (const entry of registry) {
+          if (!foundMap.has(entry.id) && existingIds.has(entry.id)) {
+            removeTrack(entry.id);
+            removed++;
+          }
+        }
+      }
+      // Read new files and add them
+      let added = 0;
+      const newFiles: File[] = [];
+      for (const [, info] of toAdd) {
+        try {
+          const result = await window.electronAPI.readFile(info.path);
+          const blob = new Blob([result.bytes]);
+          const ext = info.name.split(".").pop()?.toLowerCase() ?? "";
+          const MIME: Record<string, string> = {
+            mp3: "audio/mpeg", flac: "audio/flac", wav: "audio/wav",
+            m4a: "audio/mp4",  ogg: "audio/ogg",  aac: "audio/aac",
+            opus: "audio/opus", wma: "audio/x-ms-wma",
+          };
+          newFiles.push(new File([blob], info.name, { type: MIME[ext] ?? "audio/mpeg" }));
+          added++;
+        } catch (_) {}
+      }
+      if (newFiles.length > 0) await addFiles(newFiles);
+      // Update scan registry with current disk snapshot
+      localStorage.setItem(
+        "auto-scan-registry",
+        JSON.stringify([...foundMap.keys()].map(id => ({ id }))),
+      );
+      // Show result message
+      const flash = (msg: string) => {
+        setScanStatus(msg);
+        if (scanStatusTimerRef.current) clearTimeout(scanStatusTimerRef.current);
+        scanStatusTimerRef.current = setTimeout(() => setScanStatus(null), 5000);
+      };
+      if (manual) {
+        if (added === 0 && removed === 0) flash("Library is up to date");
+        else {
+          const parts: string[] = [];
+          if (added   > 0) parts.push(`✅ ${added} new song${added !== 1 ? "s" : ""} added`);
+          if (removed > 0) parts.push(`🗑️ ${removed} song${removed !== 1 ? "s" : ""} removed`);
+          flash(parts.join("  ·  "));
+        }
+      } else if (added > 0) {
+        flash(`✅ Found ${added} song${added !== 1 ? "s" : ""}`);
+      }
+    } catch (e) {
+      console.error("[auto-scan]", e);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [addFiles, removeTrack]);
+
+  // Trigger once on startup after component mounts
+  useEffect(() => {
+    autoScanLibrary(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       tracks,
@@ -1281,6 +1370,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeat,
       loadingFiles,
+      isScanning,
+      scanStatus,
+      autoScanLibrary,
       crossfadeEnabled,
       crossfadeSecs,
       eqGains,
@@ -1336,6 +1428,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       repeat,
       loadingFiles,
+      isScanning,
+      scanStatus,
+      autoScanLibrary,
       crossfadeEnabled,
       crossfadeSecs,
       eqGains,

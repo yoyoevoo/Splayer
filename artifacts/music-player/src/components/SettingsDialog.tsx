@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Download, FolderOpen, Monitor, Settings } from "lucide-react";
+import { Archive, Download, FolderOpen, Monitor, Settings, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DownloadsView } from "@/components/DownloadsView";
 import { cn } from "@/lib/utils";
+import {
+  getAllStoredTracks,
+  getAllStoredPlaylists,
+  saveStoredTrack,
+  saveStoredPlaylist,
+} from "@/lib/idb";
 
 // ── localStorage keys ────────────────────────────────────────────────────────
 
@@ -190,9 +196,162 @@ function CloseBehaviorSection() {
   );
 }
 
+// ── BackupSection ─────────────────────────────────────────────────────────────
+
+function BackupSection() {
+  const [status, setStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function flash(msg: string) {
+    setStatus(msg);
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setStatus(null), 4000);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      // Collect all localStorage entries
+      const lsData: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) lsData[key] = localStorage.getItem(key) ?? "";
+      }
+      // Collect IDB data (metadata only, no audio blobs)
+      const [storedTracks, storedPlaylists] = await Promise.all([
+        getAllStoredTracks(),
+        getAllStoredPlaylists(),
+      ]);
+      const tracksMeta = storedTracks.map(({ fileBlob: _fb, embeddedCover: _ec, customCover: _cc, ...rest }) => rest);
+
+      const backup = {
+        version: 1,
+        app: "Splayer",
+        exportedAt: Date.now(),
+        localStorage: lsData,
+        tracksMeta,
+        playlists: storedPlaylists.map(({ customCover: _cc, ...rest }) => rest),
+      };
+
+      const json = JSON.stringify(backup, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `Splayer_backup_${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      flash("✅ Backup exported");
+    } catch (e) {
+      flash("❌ Export failed");
+      console.error(e);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!window.confirm("This will replace all current data with the backup. Are you sure?")) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      if (!backup?.version || backup?.app !== "Splayer") {
+        flash("❌ Invalid backup file");
+        return;
+      }
+      // Restore localStorage
+      if (backup.localStorage) {
+        for (const [k, v] of Object.entries(backup.localStorage)) {
+          try { localStorage.setItem(k, v as string); } catch (_) {}
+        }
+      }
+      // Restore track metadata (without blobs — auto-scan will restore audio)
+      if (Array.isArray(backup.tracksMeta)) {
+        for (const t of backup.tracksMeta) {
+          if (t?.id) await saveStoredTrack(t.id, t);
+        }
+      }
+      // Restore playlists
+      if (Array.isArray(backup.playlists)) {
+        for (const p of backup.playlists) {
+          if (p?.id) await saveStoredPlaylist(p);
+        }
+      }
+      flash("✅ Backup restored — reloading…");
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+      flash("❌ Import failed — invalid file");
+      console.error(e);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 py-1">
+      <div>
+        <p className="text-sm font-medium text-foreground">Export Backup</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Save all your playlists, settings, themes, and preferences as a single
+          JSON file you can restore later.
+        </p>
+        <Button
+          className="mt-3 gap-2"
+          variant="outline"
+          onClick={handleExport}
+          disabled={exporting}
+        >
+          <Upload className="w-4 h-4" />
+          {exporting ? "Exporting…" : "📤 Export Backup"}
+        </Button>
+      </div>
+
+      <hr className="border-card-border" />
+
+      <div>
+        <p className="text-sm font-medium text-foreground">Import Backup</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Restore from a previously exported Splayer backup file. Your current
+          data will be replaced.
+        </p>
+        <Button
+          className="mt-3 gap-2"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+        >
+          <Download className="w-4 h-4" />
+          {importing ? "Importing…" : "📥 Import Backup"}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={handleImportFile}
+        />
+      </div>
+
+      {status && (
+        <p className="text-xs text-green-500 mt-2">{status}</p>
+      )}
+    </div>
+  );
+}
+
 // ── SettingsDialog ────────────────────────────────────────────────────────────
 
-type Tab = "folders" | "downloads" | "behavior";
+type Tab = "folders" | "downloads" | "behavior" | "backup";
 
 interface Props {
   open: boolean;
@@ -250,6 +409,18 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <Monitor className="w-3.5 h-3.5" />
             Behavior
           </button>
+          <button
+            onClick={() => setTab("backup")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              tab === "backup"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Backup
+          </button>
         </div>
 
         {/* ── Folders tab ── */}
@@ -296,6 +467,16 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
               App Behavior
             </p>
             <CloseBehaviorSection />
+          </div>
+        )}
+
+        {/* ── Backup tab ── */}
+        {tab === "backup" && (
+          <div className="py-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Backup &amp; Restore
+            </p>
+            <BackupSection />
           </div>
         )}
       </DialogContent>

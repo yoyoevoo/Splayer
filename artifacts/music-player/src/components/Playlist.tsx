@@ -12,6 +12,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   ScanSearch,
   Search,
   Tags,
@@ -139,6 +140,9 @@ function LibraryView() {
     setCustomCover,
     addTracksToPlaylist,
     toggleLike,
+    isScanning,
+    scanStatus,
+    autoScanLibrary,
   } = usePlayer();
   const [query, setQuery] = useState("");
   const [editTrack, setEditTrack] = useState<Track | null>(null);
@@ -200,6 +204,18 @@ function LibraryView() {
               size="sm"
               variant="ghost"
               className="gap-1.5"
+              onClick={() => autoScanLibrary(true)}
+              disabled={isScanning}
+              title="Rescan music folders for new or removed songs"
+              data-testid="button-refresh-library"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", isScanning && "animate-spin")} />
+              <span className="sr-only">Refresh Library</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
               onClick={() => setDupFinderOpen(true)}
               title="Find Duplicates"
               data-testid="button-find-duplicates"
@@ -256,10 +272,19 @@ function LibraryView() {
           />
         </div>
         <div className="text-xs text-muted-foreground">
-          {tracks.length} {tracks.length === 1 ? "track" : "tracks"}
-          {query && filtered.length !== tracks.length
-            ? ` · ${filtered.length} shown`
-            : ""}
+          {isScanning
+            ? "Scanning for music…"
+            : scanStatus
+              ? scanStatus
+              : (
+                <>
+                  {tracks.length} {tracks.length === 1 ? "track" : "tracks"}
+                  {query && filtered.length !== tracks.length
+                    ? ` · ${filtered.length} shown`
+                    : ""}
+                </>
+              )
+          }
         </div>
       </div>
 

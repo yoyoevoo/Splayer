@@ -97,6 +97,12 @@ declare global {
         clientSecret: string;
       }) => Promise<SpotifyPlaylistResult | { error: string }>;
 
+      /** Scan ~/Music, ~/Downloads, ~/Desktop and USB drives for audio files. */
+      scanLibrary: () => Promise<{ path: string; name: string; size: number }[]>;
+
+      /** Read a file from disk by absolute path. */
+      readFile: (filePath: string) => Promise<{ bytes: Uint8Array; name: string; size: number }>;
+
       /** Bring the hidden window back to the foreground. */
       showWindow: () => Promise<void>;
 

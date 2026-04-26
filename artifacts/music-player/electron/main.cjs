@@ -1057,6 +1057,68 @@ ipcMain.on("update-tray-state", (_event, state) => {
   updateTray();
 });
 
+// ── Library auto-scan ─────────────────────────────────────────────────────────
+ipcMain.handle("scan-library", async () => {
+  const fsp = require("fs/promises");
+  const AUDIO_EXTS = new Set([".mp3", ".flac", ".wav", ".m4a", ".ogg", ".aac", ".opus", ".wma"]);
+  const home = os.homedir();
+  let username = "";
+  try { username = os.userInfo().username; } catch (_) {}
+
+  const roots = [
+    path.join(home, "Music"),
+    path.join(home, "Downloads"),
+    path.join(home, "Desktop"),
+  ];
+
+  // Linux USB / external drives
+  for (const base of [
+    `/media/${username}`,
+    `/run/media/${username}`,
+    `/mnt`,
+  ]) {
+    try {
+      const entries = await fsp.readdir(base, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isDirectory() && !e.name.startsWith(".")) {
+          roots.push(path.join(base, e.name));
+        }
+      }
+    } catch (_) {}
+  }
+
+  const found = [];
+
+  async function scanDir(dir) {
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); }
+    catch (_) { return; }
+    for (const e of entries) {
+      if (e.name.startsWith(".")) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        await scanDir(full);
+      } else if (e.isFile()) {
+        const ext = path.extname(e.name).toLowerCase();
+        if (AUDIO_EXTS.has(ext)) {
+          try {
+            const st = await fsp.stat(full);
+            found.push({ path: full, name: e.name, size: st.size });
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  for (const root of roots) await scanDir(root);
+  return found;
+});
+
+ipcMain.handle("read-file", async (_event, filePath) => {
+  const buf = await fs.readFile(filePath);
+  return { bytes: buf, name: path.basename(filePath), size: buf.length };
+});
+
 ipcMain.handle("show-window", () => {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
 });

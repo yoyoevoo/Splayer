@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   spotifyFetchPlaylist: ({ playlistUrl, clientId, clientSecret }) =>
     ipcRenderer.invoke("spotify-fetch-playlist", { playlistUrl, clientId, clientSecret }),
 
+  /** Scan default music locations and return audio file info. */
+  scanLibrary: () => ipcRenderer.invoke("scan-library"),
+
+  /** Read a file from disk by absolute path. Returns bytes + name + size. */
+  readFile: (filePath) => ipcRenderer.invoke("read-file", filePath),
+
   /** Bring the hidden window back to the foreground. */
   showWindow: () => ipcRenderer.invoke("show-window"),
 
