@@ -5,7 +5,7 @@ exports.default = async function (context) {
   if (context.electronPlatformName !== "linux") return;
 
   const appOutDir = context.appOutDir;
-  const binName = "music-player";
+  const binName = "splayer";
   const binPath = path.join(appOutDir, binName);
   const realBinPath = path.join(appOutDir, binName + ".bin");
 
