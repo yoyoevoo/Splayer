@@ -65,6 +65,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Bring the hidden window back to the foreground. */
   showWindow: () => ipcRenderer.invoke("show-window"),
 
+  /** Returns the current OS platform string ("win32", "linux", "darwin"). */
+  platform: process.platform,
+
+  /** Minimize the Electron window (Windows custom titlebar). */
+  minimizeWindow: () => ipcRenderer.send("window-minimize"),
+
+  /** Toggle maximize / restore the Electron window. */
+  maximizeWindow: () => ipcRenderer.send("window-maximize"),
+
+  /** Close the Electron window (respects tray behaviour). */
+  closeWindow: () => ipcRenderer.send("window-close"),
+
   /**
    * Subscribe to tray control events (play-pause / next / prev).
    * Returns an unsubscribe function — call it in cleanup.

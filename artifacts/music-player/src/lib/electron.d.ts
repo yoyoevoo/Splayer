@@ -106,6 +106,18 @@ declare global {
       /** Bring the hidden window back to the foreground. */
       showWindow: () => Promise<void>;
 
+      /** The OS platform string ("win32" | "linux" | "darwin"). */
+      platform?: string;
+
+      /** Minimize the window (used by custom Windows titlebar). */
+      minimizeWindow?: () => void;
+
+      /** Toggle maximize / restore (used by custom Windows titlebar). */
+      maximizeWindow?: () => void;
+
+      /** Close the window — respects the tray-vs-quit behaviour setting. */
+      closeWindow?: () => void;
+
       /**
        * Subscribe to tray / global-shortcut events.
        * Returns an unsubscribe function.

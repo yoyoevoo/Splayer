@@ -4,14 +4,19 @@ const fs = require("fs/promises");
 const http = require("http");
 const os = require("os");
 
-app.commandLine.appendSwitch("no-sandbox");
-app.commandLine.appendSwitch("disable-gpu-sandbox");
-app.commandLine.appendSwitch("disable-setuid-sandbox");
+// Sandbox flags are only needed on Linux (SUID sandbox is unavailable there).
+// On Windows these switches are unnecessary and removed to avoid any side-effects.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox");
+  app.commandLine.appendSwitch("disable-gpu-sandbox");
+  app.commandLine.appendSwitch("disable-setuid-sandbox");
+}
 
 // ── Pin userData path ─────────────────────────────────────────────────────────
-// Keep the storage directory fixed at ~/.config/splayer forever.
-// This prevents any future rename from relocating library / settings data.
-const USERDATA_DIR = path.join(os.homedir(), ".config", "splayer");
+// Linux: ~/.config/splayer  |  Windows: %APPDATA%\Splayer
+const USERDATA_DIR = process.platform === "win32"
+  ? path.join(os.homedir(), "AppData", "Roaming", "Splayer")
+  : path.join(os.homedir(), ".config", "splayer");
 
 // All previous locations this app may have stored data in, most-preferred first.
 // "Music Player"  → original productName default
@@ -25,10 +30,8 @@ const OLD_DATA_DIRS = [
 
 app.setPath("userData", USERDATA_DIR);
 
-// Migrate data from the first old directory that has real Electron session data.
-// Uses renameSync (atomic, instant) with a cpSync fallback for cross-device moves.
-// Writes a plain-text log to ~/.config/splayer-migration.log for debugging.
-(function migrateUserData() {
+// Migration is Linux-only — Windows installs are always fresh.
+(process.platform === "linux") && (function migrateUserData() {
   const fsSync = require("fs");
   const logPath = path.join(os.homedir(), ".config", "splayer-migration.log");
 
@@ -415,27 +418,68 @@ embedServer.listen(0, "127.0.0.1", () => {
 
 ipcMain.handle("get-embed-port", () => embedServerPort);
 
+// ── Window bounds persistence ─────────────────────────────────────────────────
+const BOUNDS_FILE = path.join(USERDATA_DIR, "window-bounds.json");
+
+function loadBounds() {
+  try {
+    const data = require("fs").readFileSync(BOUNDS_FILE, "utf8");
+    const b = JSON.parse(data);
+    if (typeof b.x === "number" && typeof b.width === "number" && b.width > 100) return b;
+  } catch {}
+  return null;
+}
+
+function saveBounds() {
+  if (!mainWindow || mainWindow.isMaximized() || mainWindow.isMinimized()) return;
+  try {
+    require("fs").writeFileSync(BOUNDS_FILE, JSON.stringify(mainWindow.getBounds()));
+  } catch {}
+}
+
 function createWindow() {
+  const isWin32   = process.platform === "win32";
+  const saved     = isWin32 ? loadBounds() : null;
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 900,
-    minHeight: 600,
+    ...(saved || { width: 1280, height: 800 }),
+    minWidth:        1280,
+    minHeight:       800,
     backgroundColor: "#0a0a0f",
-    title: "Splayer",
+    title:           "Splayer",
     autoHideMenuBar: true,
+    // Frameless on Windows → custom React titlebar is rendered instead
+    ...(isWin32 ? { frame: false } : {}),
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, "icon.png")
+      : path.join(__dirname, "..", "build", "icon.png"),
     webPreferences: {
       contextIsolation: true,
-      nodeIntegration: false,
-      preload: path.join(__dirname, "preload.cjs"),
+      nodeIntegration:  false,
+      preload:          path.join(__dirname, "preload.cjs"),
     },
   });
 
   mainWindow = win;
   Menu.setApplicationMenu(null);
 
+  // Always start maximised
+  win.maximize();
+
+  // Persist size/position (Windows only — throttled)
+  if (isWin32) {
+    let saveTimer = null;
+    const scheduleSave = () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { saveTimer = null; saveBounds(); }, 600);
+    };
+    win.on("resize", scheduleSave);
+    win.on("move",   scheduleSave);
+  }
+
   // Minimize-to-tray / close fully depending on user setting
   win.on("close", (e) => {
+    saveBounds();
     if (!isQuitting && closeBehavior === "tray") {
       e.preventDefault();
       win.hide();
@@ -490,12 +534,19 @@ ipcMain.handle("yt-search", async (_event, query) => {
 const { spawn } = require("child_process");
 
 function getYtDlpPath() {
-  // In packaged AppImage: process.resourcesPath = .../resources/
-  // In dev: resources/ is next to electron/
+  const exeName    = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
   const resourcesDir = app.isPackaged
     ? process.resourcesPath
     : path.join(__dirname, "..", "resources");
-  return path.join(resourcesDir, "yt-dlp");
+  return path.join(resourcesDir, exeName);
+}
+
+function getFfmpegPath() {
+  const exeName    = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, "..", "resources");
+  return path.join(resourcesDir, exeName);
 }
 
 function extractVideoId(url) {
@@ -815,7 +866,7 @@ function runYtDlpFile(args, onStderr) {
 // ── Helper: merge video + audio with ffmpeg ───────────────────────────────────
 function runFfmpegMerge(videoPath, audioPath, outputPath) {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", [
+    const proc = spawn(getFfmpegPath(), [
       "-y",
       "-i", videoPath,
       "-i", audioPath,
@@ -1071,20 +1122,29 @@ ipcMain.handle("scan-library", async () => {
     path.join(home, "Desktop"),
   ];
 
-  // Linux USB / external drives
-  for (const base of [
-    `/media/${username}`,
-    `/run/media/${username}`,
-    `/mnt`,
-  ]) {
-    try {
-      const entries = await fsp.readdir(base, { withFileTypes: true });
-      for (const e of entries) {
-        if (e.isDirectory() && !e.name.startsWith(".")) {
-          roots.push(path.join(base, e.name));
+  if (process.platform === "win32") {
+    // Scan common drive letters for removable media / secondary drives
+    const drives = ["D:", "E:", "F:", "G:", "H:"];
+    for (const d of drives) {
+      roots.push(path.join(d, "\\Music"));
+      roots.push(path.join(d, "\\"));
+    }
+  } else {
+    // Linux USB / external drives
+    for (const base of [
+      `/media/${username}`,
+      `/run/media/${username}`,
+      `/mnt`,
+    ]) {
+      try {
+        const entries = await fsp.readdir(base, { withFileTypes: true });
+        for (const e of entries) {
+          if (e.isDirectory() && !e.name.startsWith(".")) {
+            roots.push(path.join(base, e.name));
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
   const found = [];
@@ -1121,6 +1181,27 @@ ipcMain.handle("read-file", async (_event, filePath) => {
 
 ipcMain.handle("show-window", () => {
   if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+});
+
+// ── Window control IPC (used by custom Windows titlebar) ──────────────────────
+ipcMain.on("window-minimize", () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on("window-maximize", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+
+ipcMain.on("window-close", () => {
+  if (!mainWindow) return;
+  if (!isQuitting && closeBehavior === "tray") {
+    mainWindow.hide();
+  } else {
+    isQuitting = true;
+    app.quit();
+  }
 });
 
 app.whenReady().then(() => {

@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Player from "@/pages/Player";
 import { PlayerProvider, usePlayer } from "@/lib/player-context";
 import { checkAndRunAutoBackup } from "@/lib/auto-backup";
+import { TitleBar } from "@/components/TitleBar";
 
 const queryClient = new QueryClient();
 
@@ -94,6 +95,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <PlayerProvider>
+          <TitleBar />
           <TrayBridge />
           <Player />
           <Toaster />

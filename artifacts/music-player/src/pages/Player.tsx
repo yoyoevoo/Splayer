@@ -126,8 +126,10 @@ export default function Player() {
 
   const hasTracks = tracks.length > 0;
 
+  const isWin32 = window.electronAPI?.platform === "win32";
+
   return (
-    <div className="h-screen w-full flex flex-col bg-background text-foreground overflow-hidden">
+    <div className={`h-screen w-full flex flex-col bg-background text-foreground overflow-hidden${isWin32 ? " pt-9" : ""}`}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-card-border">
