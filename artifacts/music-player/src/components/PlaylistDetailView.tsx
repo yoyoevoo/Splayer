@@ -43,6 +43,7 @@ import { MosaicCover } from "./MosaicCover";
 import { EditPlaylistDialog } from "./EditPlaylistDialog";
 import { AddTracksDialog } from "./AddTracksDialog";
 import { DeleteTrackDialog } from "./DeleteTrackDialog";
+import { NewPlaylistDialog } from "./NewPlaylistDialog";
 
 interface PlaylistDetailViewProps {
   playlistId: string;

@@ -281,7 +281,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
 
         {/* ── Downloads tab ── */}
         {tab === "downloads" && (
-          <div className="py-1">
+          <div className="py-1 overflow-x-hidden">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
               Download History
             </p>

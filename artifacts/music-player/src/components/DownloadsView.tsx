@@ -91,7 +91,7 @@ export function DownloadsView() {
       </div>
 
       {/* ── Card list ── */}
-      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+      <div className="space-y-2 max-h-[300px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
         {history.map((record) => {
           const inLibrary  = tracks.some((t) => t.id === record.trackId);
           const coverUrl   = tracks.find((t) => t.id === record.trackId)?.embeddedCoverUrl
@@ -103,17 +103,18 @@ export function DownloadsView() {
           return (
             <div
               key={record.id}
-              className="group flex items-center gap-3 rounded-xl border border-white/[0.07] px-3 py-2.5 transition-all duration-150 hover:border-white/[0.14] hover:brightness-110"
+              className="group flex items-center gap-2 rounded-xl border border-white/[0.07] px-2.5 py-2 transition-all duration-150 hover:border-white/[0.14] hover:brightness-110 overflow-hidden w-full"
               style={{
                 background: "linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)",
               }}
             >
-              {/* Thumbnail */}
+              {/* Thumbnail — fixed 48×48 to save horizontal space */}
               <div
-                className="shrink-0 rounded-lg overflow-hidden flex items-center justify-center text-white font-bold text-lg"
+                className="shrink-0 rounded-lg overflow-hidden flex items-center justify-center text-white font-bold text-base"
                 style={{
-                  width:  60,
-                  height: 60,
+                  width:  48,
+                  height: 48,
+                  minWidth: 48,
                   background: coverUrl ? undefined : avatarGradient(record.title),
                 }}
               >
@@ -130,19 +131,17 @@ export function DownloadsView() {
                 )}
               </div>
 
-              {/* Title + artist */}
-              <div className="min-w-0 flex-1">
+              {/* Title + artist + badge — min-w-0 so truncation works */}
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="text-sm font-semibold text-white truncate leading-tight">
                   {record.title}
                 </p>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
                   {record.artist || "Unknown artist"}
                 </p>
-
-                {/* Badge row */}
-                <div className="flex items-center gap-1.5 mt-1.5">
+                <div className="flex items-center gap-1.5 mt-1">
                   <span
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide"
+                    className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shrink-0"
                     style={{
                       background: isMp4 ? "rgba(168,85,247,0.2)" : "rgba(34,197,94,0.18)",
                       color:      isMp4 ? "#c084fc"              : "#4ade80",
@@ -152,40 +151,33 @@ export function DownloadsView() {
                   >
                     {ext}
                   </span>
+                  <span className="text-[10px] text-muted-foreground/60 truncate">
+                    {formatBytes(record.fileSize)} · {formatDate(record.downloadedAt)}
+                  </span>
                 </div>
               </div>
 
-              {/* Size + date (right-aligned centre column) */}
-              <div className="hidden sm:flex flex-col items-end gap-0.5 shrink-0 text-right mr-1">
-                <span className="text-xs text-muted-foreground font-medium">
-                  {formatBytes(record.fileSize)}
-                </span>
-                <span className="text-[10px] text-muted-foreground/60">
-                  {formatDate(record.downloadedAt)}
-                </span>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-1 shrink-0">
+              {/* Action buttons — always shrink-0 so they never push out */}
+              <div className="flex items-center gap-0.5 shrink-0">
                 {inLibrary && isAudio && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-white hover:bg-white/10"
+                    className="h-7 w-7 p-0 rounded-full text-muted-foreground hover:text-white hover:bg-white/10"
                     title="Play this track"
                     onClick={() => handlePlay(record.trackId)}
                   >
-                    <Play className="h-3.5 w-3.5 fill-current" />
+                    <Play className="h-3 w-3 fill-current" />
                   </Button>
                 )}
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                  className="h-7 w-7 p-0 rounded-full text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                   title="Remove from history"
                   onClick={() => handleDelete(record.id)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
             </div>
