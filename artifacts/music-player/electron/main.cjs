@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs/promises");
 const http = require("http");
@@ -52,6 +52,19 @@ function buildTrayMenu() {
     },
     { type: "separator" },
     {
+      label: `🔊 Volume: ${trayVolume}%`,
+      enabled: false,
+    },
+    {
+      label: "🔼  Volume +5",
+      click: () => adjustVolume(5),
+    },
+    {
+      label: "🔽  Volume −5",
+      click: () => adjustVolume(-5),
+    },
+    { type: "separator" },
+    {
       label: "🖥  Open Music Player",
       click: () => {
         if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
@@ -74,6 +87,24 @@ function updateTray() {
   tray.setContextMenu(buildTrayMenu());
 }
 
+// Shared helper used by both tray menu items and global shortcuts.
+// Clamps volume to 0-100, pushes it to the renderer, and refreshes the tray.
+function adjustVolume(delta) {
+  trayVolume = Math.max(0, Math.min(100, trayVolume + delta));
+  if (mainWindow) {
+    mainWindow.webContents.send("tray-action", { type: "set-volume", volume: trayVolume });
+  }
+  if (tray) {
+    tray.setToolTip(`🔊 Volume: ${trayVolume}%`);
+  }
+  if (volumeTooltipTimer) clearTimeout(volumeTooltipTimer);
+  volumeTooltipTimer = setTimeout(() => {
+    volumeTooltipTimer = null;
+    updateTray();
+  }, 2000);
+  updateTray(); // also refresh menu label immediately
+}
+
 function createTray() {
   try {
     const iconPath = getTrayIconPath();
@@ -86,30 +117,8 @@ function createTray() {
     });
 
     tray.on("scroll", (_event, _delta, direction) => {
-      if (direction === "up") {
-        trayVolume = Math.min(100, trayVolume + 1);
-      } else if (direction === "down") {
-        trayVolume = Math.max(0, trayVolume - 1);
-      } else {
-        return; // ignore left/right
-      }
-
-      // Push new volume to renderer immediately
-      if (mainWindow) {
-        mainWindow.webContents.send("tray-action", { type: "set-volume", volume: trayVolume });
-      }
-
-      // Show volume in tooltip while scrolling
-      if (tray) {
-        tray.setToolTip(`🔊 Volume: ${trayVolume}`);
-      }
-
-      // Restore normal now-playing tooltip after 2 s of inactivity
-      if (volumeTooltipTimer) clearTimeout(volumeTooltipTimer);
-      volumeTooltipTimer = setTimeout(() => {
-        volumeTooltipTimer = null;
-        updateTray();
-      }, 2000);
+      if (direction === "up")        adjustVolume(1);
+      else if (direction === "down") adjustVolume(-1);
     });
   } catch (e) {
     console.error("[Tray] Failed to create system tray:", e.message);
@@ -790,9 +799,18 @@ ipcMain.handle("show-window", () => {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+
+  // Global shortcuts for volume control (work even when the window is hidden/minimized)
+  globalShortcut.register("Control+Up",   () => adjustVolume(1));
+  globalShortcut.register("Control+Down", () => adjustVolume(-1));
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {
