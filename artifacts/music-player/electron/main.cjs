@@ -533,6 +533,33 @@ ipcMain.handle("yt-search", async (_event, query) => {
 
 const { spawn } = require("child_process");
 
+function getYtDlpCookieBrowsers() {
+  if (process.platform === "win32") return ["chrome", "edge"];
+  if (process.platform === "darwin") return ["safari", "chrome"];
+  return ["chrome", "firefox"]; // linux
+}
+
+function getYtDlpPlatformArgs() {
+  if (process.platform === "win32") {
+    return [
+      "--user-agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "--sleep-interval",
+      "1",
+    ];
+  }
+  return [];
+}
+
+function buildYtDlpArgs(baseArgs, cookieBrowser) {
+  const args = [...getYtDlpPlatformArgs()];
+  if (cookieBrowser) {
+    args.push("--cookies-from-browser", cookieBrowser);
+  }
+  args.push(...baseArgs);
+  return args;
+}
+
 function getYtDlpPath() {
   const exeName    = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
   const resourcesDir = app.isPackaged
@@ -566,39 +593,64 @@ function extractVideoId(url) {
 // Run yt-dlp and return stdout as a Buffer.
 // onStderr receives raw stderr text (used for progress parsing).
 function runYtDlp(args, onStderr) {
-  return new Promise((resolve, reject) => {
-    const bin = getYtDlpPath();
-    const proc = spawn(bin, args, { env: { ...process.env } });
+  const browsers = getYtDlpCookieBrowsers();
 
-    const outChunks = [];
-    let errText = "";
+  function runAttempt(attemptArgs) {
+    return new Promise((resolve, reject) => {
+      const bin = getYtDlpPath();
+      const proc = spawn(bin, attemptArgs, { env: { ...process.env } });
 
-    proc.stdout.on("data", (chunk) => outChunks.push(Buffer.from(chunk)));
-    proc.stderr.on("data", (data) => {
-      const text = data.toString();
-      errText += text;
-      if (onStderr) onStderr(text);
+      const outChunks = [];
+      let errText = "";
+
+      proc.stdout.on("data", (chunk) => outChunks.push(Buffer.from(chunk)));
+      proc.stderr.on("data", (data) => {
+        const text = data.toString();
+        errText += text;
+        if (onStderr) onStderr(text);
+      });
+      proc.on("error", (e) =>
+        reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
+      );
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          // Extract the most meaningful error line from stderr
+          const errLine =
+            errText
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.toLowerCase().includes("error"))
+              .pop() ||
+            errText.trim().split("\n").pop() ||
+            "yt-dlp exited with code " + code;
+          reject(new Error(errLine));
+        } else {
+          resolve(Buffer.concat(outChunks));
+        }
+      });
     });
-    proc.on("error", (e) =>
-      reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
-    );
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        // Extract the most meaningful error line from stderr
-        const errLine =
-          errText
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l.toLowerCase().includes("error"))
-            .pop() ||
-          errText.trim().split("\n").pop() ||
-          "yt-dlp exited with code " + code;
-        reject(new Error(errLine));
-      } else {
-        resolve(Buffer.concat(outChunks));
+  }
+
+  return (async () => {
+    let lastErr = null;
+
+    for (const browser of browsers) {
+      try {
+        return await runAttempt(buildYtDlpArgs(args, browser));
+      } catch (err) {
+        lastErr = err;
       }
-    });
-  });
+    }
+
+    // Last fallback without cookies in case browser extraction is unavailable.
+    try {
+      return await runAttempt(buildYtDlpArgs(args, null));
+    } catch (err) {
+      lastErr = err;
+    }
+
+    throw lastErr || new Error("yt-dlp failed");
+  })();
 }
 
 // Parse yt-dlp's progress output and return 0-100 percentage
@@ -831,36 +883,63 @@ ipcMain.handle("yt-download-video", async (event, url) => {
 
 // ── Helper: run yt-dlp writing output to a file path ─────────────────────────
 function runYtDlpFile(args, onStderr) {
-  return new Promise((resolve, reject) => {
-    const bin  = getYtDlpPath();
-    const proc = spawn(bin, args, { env: { ...process.env } });
+  const browsers = getYtDlpCookieBrowsers();
 
-    let errText = "";
-    proc.stdout.on("data", () => {});            // discard stdout
-    proc.stderr.on("data", (data) => {
-      const text = data.toString();
-      errText += text;
-      if (onStderr) onStderr(text);
+  function runAttempt(attemptArgs) {
+    return new Promise((resolve, reject) => {
+      const bin  = getYtDlpPath();
+      const proc = spawn(bin, attemptArgs, { env: { ...process.env } });
+
+      let errText = "";
+      proc.stdout.on("data", () => {});            // discard stdout
+      proc.stderr.on("data", (data) => {
+        const text = data.toString();
+        errText += text;
+        if (onStderr) onStderr(text);
+      });
+      proc.on("error", (e) =>
+        reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
+      );
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          const errLine =
+            errText
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.toLowerCase().includes("error"))
+              .pop() ||
+            errText.trim().split("\n").pop() ||
+            "yt-dlp exited with code " + code;
+          reject(new Error(errLine));
+        } else {
+          resolve();
+        }
+      });
     });
-    proc.on("error", (e) =>
-      reject(new Error(`yt-dlp not found or failed to start: ${e.message}`)),
-    );
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        const errLine =
-          errText
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l.toLowerCase().includes("error"))
-            .pop() ||
-          errText.trim().split("\n").pop() ||
-          "yt-dlp exited with code " + code;
-        reject(new Error(errLine));
-      } else {
-        resolve();
+  }
+
+  return (async () => {
+    let lastErr = null;
+
+    for (const browser of browsers) {
+      try {
+        await runAttempt(buildYtDlpArgs(args, browser));
+        return;
+      } catch (err) {
+        lastErr = err;
       }
-    });
-  });
+    }
+
+    // Last fallback without cookies in case browser extraction is unavailable.
+    try {
+      await runAttempt(buildYtDlpArgs(args, null));
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+
+    throw lastErr || new Error("yt-dlp failed");
+  })();
 }
 
 // ── Helper: merge video + audio with ffmpeg ───────────────────────────────────
