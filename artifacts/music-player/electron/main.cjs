@@ -87,6 +87,82 @@ function updateTray() {
   tray.setContextMenu(buildTrayMenu());
 }
 
+// ── D-Bus scroll monitor (Linux / KDE Plasma) ────────────────────────────────
+// KDE sends a Scroll(delta, orientation) D-Bus method call to the app's
+// StatusNotifierItem service when the user scrolls over the tray icon.
+// Electron's Tray API doesn't expose this on Linux, so we intercept it by
+// spawning `dbus-monitor --monitor` (ships with every Linux D-Bus install).
+// --monitor uses BecomeMonitor under the hood — no root or eavesdrop needed.
+function setupTrayScrollMonitor() {
+  if (process.platform !== "linux") return;
+  try {
+    const monitor = spawn("dbus-monitor", [
+      "--session",
+      "--monitor",
+      "type='method_call',member='Scroll'",
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+
+    let buf = "";
+    let expectDelta = false;
+    let pendingDelta = null;
+    let expectOrientation = false;
+
+    monitor.stdout.on("data", (chunk) => {
+      buf += chunk.toString();
+      const lines = buf.split("\n");
+      buf = lines.pop(); // keep any incomplete trailing line
+
+      for (const line of lines) {
+        const t = line.trim();
+
+        // Header line: "method call ... member=Scroll"
+        if (t.includes("member=Scroll")) {
+          expectDelta = true;
+          pendingDelta = null;
+          expectOrientation = false;
+          continue;
+        }
+
+        if (expectDelta) {
+          const m = t.match(/^int32\s+(-?\d+)$/);
+          if (m) {
+            pendingDelta = parseInt(m[1], 10);
+            expectDelta = false;
+            expectOrientation = true;
+          } else {
+            expectDelta = false; // unexpected line, reset
+          }
+          continue;
+        }
+
+        if (expectOrientation) {
+          const m = t.match(/^string\s+"(\w+)"$/);
+          if (m) {
+            const orientation = m[1].toLowerCase();
+            if (orientation === "vertical" && pendingDelta !== null && pendingDelta !== 0) {
+              adjustVolume(pendingDelta > 0 ? 5 : -5);
+            }
+          }
+          expectOrientation = false;
+          pendingDelta = null;
+        }
+      }
+    });
+
+    monitor.on("error", () => {}); // dbus-monitor not installed → silent fail
+    monitor.on("exit", (code) => {
+      if (code !== null && code !== 0) {
+        console.warn("[Tray] dbus-monitor exited with code", code);
+      }
+    });
+
+    console.log("[Tray] D-Bus scroll monitor active");
+  } catch (err) {
+    // Graceful degradation — keyboard shortcuts and menu items still work
+    console.warn("[Tray] D-Bus scroll monitor unavailable:", err.message);
+  }
+}
+
 // Shared helper used by both tray menu items and global shortcuts.
 // Clamps volume to 0-100, pushes it to the renderer, and refreshes the tray.
 function adjustVolume(delta) {
@@ -799,6 +875,9 @@ ipcMain.handle("show-window", () => {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+
+  // D-Bus scroll monitor — intercepts KDE's Scroll method calls on Linux
+  setupTrayScrollMonitor();
 
   // Global shortcuts for volume control (work even when the window is hidden/minimized)
   globalShortcut.register("Control+Up",   () => adjustVolume(1));
