@@ -65,7 +65,7 @@ function buildTrayMenu() {
     },
     { type: "separator" },
     {
-      label: "🖥  Open Music Player",
+      label: "🖥  Open Splayer",
       click: () => {
         if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
       },
@@ -82,7 +82,7 @@ function updateTray() {
   const { title, artist } = nowPlayingState;
   const tip = (title && title !== "Nothing playing")
     ? `🎵 ${title}${artist ? ` • ${artist}` : ""}`
-    : "Music Player";
+    : "Splayer";
   tray.setToolTip(tip);
   tray.setContextMenu(buildTrayMenu());
 }
@@ -212,7 +212,7 @@ function createTray() {
     const iconPath = getTrayIconPath();
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon);
-    tray.setToolTip("Music Player");
+    tray.setToolTip("Splayer");
     tray.setContextMenu(buildTrayMenu());
     tray.on("double-click", () => {
       if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
@@ -343,7 +343,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0a0a0f",
-    title: "Music Player",
+    title: "Splayer",
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,

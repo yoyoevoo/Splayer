@@ -14,8 +14,8 @@
     "dist:linux": "pnpm run build:desktop && electron-builder --linux AppImage --x64"
   },
   "build": {
-    "appId": "com.replit.musicplayer",
-    "productName": "Music Player",
+    "appId": "com.replit.splayer",
+    "productName": "Splayer",
     "asar": true,
     "afterPack": "build/after-pack.cjs",
     "directories": {
@@ -45,7 +45,7 @@
         }
       ],
       "category": "AudioVideo;Audio;Player",
-      "executableName": "music-player",
+      "executableName": "splayer",
       "icon": "build/icon.png",
       "synopsis": "A focused local music player",
       "description": "Play your downloaded music with embedded cover art or your own custom covers."

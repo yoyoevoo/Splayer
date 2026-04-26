@@ -136,7 +136,7 @@ export default function Player() {
             <Music className="w-4 h-4" strokeWidth={2} />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-serif tracking-tight">Music Player</div>
+            <div className="text-sm font-serif tracking-tight">Splayer</div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Local listening room
             </div>
