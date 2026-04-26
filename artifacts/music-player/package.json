@@ -47,7 +47,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerFilename": "Splayer_Setup.exe",
+      "artifactName": "Splayer_Setup.exe",
       "shortcutName": "Splayer",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
