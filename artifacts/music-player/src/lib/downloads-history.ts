@@ -30,3 +30,7 @@ export function removeDownloadRecord(id: string): void {
   const history = readDownloadHistory();
   localStorage.setItem(LS_KEY, JSON.stringify(history.filter((r) => r.id !== id)));
 }
+
+export function clearAllDownloadRecords(): void {
+  localStorage.setItem(LS_KEY, JSON.stringify([]));
+}
