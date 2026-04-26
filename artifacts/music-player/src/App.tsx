@@ -7,13 +7,46 @@ import { PlayerProvider, usePlayer } from "@/lib/player-context";
 
 const queryClient = new QueryClient();
 
+const LS_SHORTCUTS_KEY = "settings-global-shortcuts";
+
+const DEFAULT_SHORTCUTS: Record<string, string> = {
+  playPause:  "MediaPlayPause",
+  next:       "MediaNextTrack",
+  prev:       "MediaPreviousTrack",
+  mute:       "Ctrl+Shift+M",
+  shuffle:    "Ctrl+Shift+S",
+  repeat:     "Ctrl+Shift+R",
+  volumeUp:   "Ctrl+Up",
+  volumeDown: "Ctrl+Down",
+};
+
+function loadShortcuts(): Record<string, string> {
+  try {
+    const saved = localStorage.getItem(LS_SHORTCUTS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Record<string, string>;
+      return { ...DEFAULT_SHORTCUTS, ...parsed };
+    }
+  } catch {}
+  return { ...DEFAULT_SHORTCUTS };
+}
+
 function TrayBridge() {
-  const { currentTrack, isPlaying, togglePlay, next, prev, volume, setVolume } = usePlayer();
+  const {
+    currentTrack, isPlaying,
+    togglePlay, next, prev,
+    toggleMute, toggleShuffle, cycleRepeat,
+    volume, setVolume,
+  } = usePlayer();
   const api = window.electronAPI;
 
   useEffect(() => {
     const behavior = (localStorage.getItem("settings-close-behavior") ?? "tray") as "tray" | "close";
     api?.setCloseBehavior?.(behavior);
+  }, []);
+
+  useEffect(() => {
+    api?.registerGlobalShortcuts?.(loadShortcuts());
   }, []);
 
   useEffect(() => {
@@ -33,6 +66,12 @@ function TrayBridge() {
         next();
       } else if (action === "prev") {
         prev();
+      } else if (action === "mute") {
+        toggleMute();
+      } else if (action === "shuffle") {
+        toggleShuffle();
+      } else if (action === "repeat") {
+        cycleRepeat();
       } else if (
         action !== null &&
         typeof action === "object" &&
@@ -43,7 +82,7 @@ function TrayBridge() {
       }
     });
     return cleanup ?? undefined;
-  }, [togglePlay, next, prev, setVolume]);
+  }, [togglePlay, next, prev, toggleMute, toggleShuffle, cycleRepeat, setVolume]);
 
   return null;
 }

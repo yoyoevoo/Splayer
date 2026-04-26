@@ -181,6 +181,32 @@ function adjustVolume(delta) {
   updateTray(); // also refresh menu label immediately
 }
 
+// ── Global shortcuts (configurable via renderer) ──────────────────────────────
+const SHORTCUT_ACTIONS = {
+  playPause:  () => { if (mainWindow) mainWindow.webContents.send("tray-action", "play-pause"); },
+  next:       () => { if (mainWindow) mainWindow.webContents.send("tray-action", "next"); },
+  prev:       () => { if (mainWindow) mainWindow.webContents.send("tray-action", "prev"); },
+  mute:       () => { if (mainWindow) mainWindow.webContents.send("tray-action", "mute"); },
+  shuffle:    () => { if (mainWindow) mainWindow.webContents.send("tray-action", "shuffle"); },
+  repeat:     () => { if (mainWindow) mainWindow.webContents.send("tray-action", "repeat"); },
+  volumeUp:   () => adjustVolume(5),
+  volumeDown: () => adjustVolume(-5),
+};
+
+function registerShortcuts(shortcuts) {
+  globalShortcut.unregisterAll();
+  for (const [action, accelerator] of Object.entries(shortcuts)) {
+    const handler = SHORTCUT_ACTIONS[action];
+    if (handler && accelerator) {
+      try {
+        globalShortcut.register(String(accelerator), handler);
+      } catch (e) {
+        console.warn(`[Shortcuts] Failed to register "${accelerator}" for "${action}":`, e.message);
+      }
+    }
+  }
+}
+
 function createTray() {
   try {
     const iconPath = getTrayIconPath();
@@ -848,6 +874,13 @@ ipcMain.handle("delete-file", async (_event, filePath) => {
   }
 });
 
+// ── IPC: Global shortcuts ─────────────────────────────────────────────────────
+ipcMain.handle("register-global-shortcuts", (_event, shortcuts) => {
+  if (shortcuts && typeof shortcuts === "object") {
+    registerShortcuts(shortcuts);
+  }
+});
+
 // ── IPC: Tray & close-behavior ────────────────────────────────────────────────
 ipcMain.handle("set-close-behavior", (_event, behavior) => {
   if (behavior === "tray" || behavior === "close") {
@@ -879,9 +912,8 @@ app.whenReady().then(() => {
   // D-Bus scroll monitor — intercepts KDE's Scroll method calls on Linux
   setupTrayScrollMonitor();
 
-  // Global shortcuts for volume control (work even when the window is hidden/minimized)
-  globalShortcut.register("Control+Up",   () => adjustVolume(5));
-  globalShortcut.register("Control+Down", () => adjustVolume(-5));
+  // Global shortcuts are registered by the renderer on mount (reads user's saved bindings).
+  // Nothing hardcoded here — registerShortcuts() is called via IPC.
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

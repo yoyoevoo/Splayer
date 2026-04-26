@@ -71,17 +71,20 @@ declare global {
       /** Set whether closing the window minimizes to tray ("tray") or quits ("close"). */
       setCloseBehavior: (behavior: "tray" | "close") => Promise<void>;
 
+      /** Register (or replace) all global keyboard shortcuts. */
+      registerGlobalShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
+
       /** Push playback state to the main process so the tray stays in sync. */
-      updateTrayState: (state: { title: string; artist: string; isPlaying: boolean }) => void;
+      updateTrayState: (state: { title: string; artist: string; isPlaying: boolean; volume: number }) => void;
 
       /** Bring the hidden window back to the foreground. */
       showWindow: () => Promise<void>;
 
       /**
-       * Subscribe to tray media-control events.
+       * Subscribe to tray / global-shortcut events.
        * Returns an unsubscribe function.
        */
-      onTrayAction: (cb: (action: "play-pause" | "next" | "prev") => void) => () => void;
+      onTrayAction: (cb: (action: unknown) => void) => () => void;
 
       /**
        * Subscribe to audio download-progress events.

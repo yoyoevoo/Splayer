@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("set-close-behavior", behavior),
 
   /**
+   * Register (or update) all global shortcuts.
+   * Completely replaces any previously registered shortcuts.
+   */
+  registerGlobalShortcuts: (shortcuts) =>
+    ipcRenderer.invoke("register-global-shortcuts", shortcuts),
+
+  /**
    * Push current playback state to the main process so the tray menu
    * and tooltip stay up-to-date (fire-and-forget).
    */
