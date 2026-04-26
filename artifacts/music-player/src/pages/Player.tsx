@@ -29,6 +29,7 @@ import { AppearanceDialog } from "@/components/AppearanceDialog";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { YoutubeDownloadDialog } from "@/components/YoutubeDownloadDialog";
+import { SpotifyPlaylistDialog } from "@/components/SpotifyPlaylistDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -49,6 +50,7 @@ export default function Player() {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [settingsOpen,   setSettingsOpen]   = useState(false);
   const [ytOpen,        setYtOpen]        = useState(false);
+  const [spotifyOpen,   setSpotifyOpen]   = useState(false);
   const [miniMode,      setMiniMode]      = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
   const dragCounter = useRef(0);
@@ -177,6 +179,15 @@ export default function Player() {
                 <Youtube className="w-4 h-4 mr-2 text-red-500" />
                 From YouTube...
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSpotifyOpen(true)}>
+                {/* Spotify green dot as icon */}
+                <span className="w-4 h-4 mr-2 flex items-center justify-center shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#1DB954" aria-hidden>
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.32a.75.75 0 0 1-1.032.25c-2.823-1.725-6.38-2.115-10.567-1.158a.75.75 0 0 1-.334-1.463c4.58-1.047 8.508-.597 11.682 1.34a.75.75 0 0 1 .251 1.031zm1.473-3.276a.937.937 0 0 1-1.288.308C14.96 12.525 11.1 12 7.2 13.062a.938.938 0 0 1-.468-1.815C11.17 10.07 15.48 10.655 18.68 12.756a.938.938 0 0 1 .309 1.288zm.126-3.408c-3.35-1.99-8.875-2.172-12.073-1.201a1.124 1.124 0 0 1-.65-2.15c3.671-1.113 9.77-.898 13.626 1.39a1.125 1.125 0 1 1-1.127 1.95l.224-.989z" />
+                  </svg>
+                </span>
+                From Spotify playlist...
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -277,6 +288,7 @@ export default function Player() {
       <AppearanceDialog open={appearanceOpen} onOpenChange={setAppearanceOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <YoutubeDownloadDialog open={ytOpen} onOpenChange={setYtOpen} />
+      <SpotifyPlaylistDialog open={spotifyOpen} onOpenChange={setSpotifyOpen} />
 
       <input ref={fileRef} type="file"
         accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"

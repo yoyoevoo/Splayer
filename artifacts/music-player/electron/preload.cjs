@@ -52,6 +52,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateTrayState: (state) =>
     ipcRenderer.send("update-tray-state", state),
 
+  /** Fetch all tracks from a Spotify playlist URL using the given credentials. */
+  spotifyFetchPlaylist: ({ playlistUrl, clientId, clientSecret }) =>
+    ipcRenderer.invoke("spotify-fetch-playlist", { playlistUrl, clientId, clientSecret }),
+
   /** Bring the hidden window back to the foreground. */
   showWindow: () => ipcRenderer.invoke("show-window"),
 

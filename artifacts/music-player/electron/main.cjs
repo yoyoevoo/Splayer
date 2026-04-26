@@ -864,6 +864,83 @@ ipcMain.handle("yt-download-merged", async (event, { url, videoFormatId }) => {
   }
 });
 
+// ── IPC: Spotify — fetch all tracks from a playlist URL ──────────────────────
+ipcMain.handle("spotify-fetch-playlist", async (_event, { playlistUrl, clientId, clientSecret }) => {
+  try {
+    // Parse playlist ID from various URL formats
+    // e.g. https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+    const match = playlistUrl.match(/playlist\/([A-Za-z0-9]+)/);
+    if (!match) return { error: "Invalid Spotify playlist URL. Paste a link like open.spotify.com/playlist/..." };
+    const playlistId = match[1];
+
+    if (!clientId || !clientSecret) {
+      return { error: "Spotify credentials not configured. Add your Client ID and Client Secret in Settings." };
+    }
+
+    // Step 1 — get an access token via Client Credentials flow
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      return { error: tokenData.error_description ?? "Spotify authentication failed. Check your Client ID and Secret." };
+    }
+    const token = tokenData.access_token;
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Step 2 — fetch playlist metadata + first page of tracks
+    const fields = encodeURIComponent(
+      "name,tracks.total,tracks.next,tracks.items(track(id,name,artists(name),duration_ms))"
+    );
+    const playlistRes = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistId}?fields=${fields}`,
+      { headers },
+    );
+    if (!playlistRes.ok) {
+      const err = await playlistRes.json().catch(() => ({}));
+      return { error: err.error?.message ?? `Failed to fetch playlist (HTTP ${playlistRes.status})` };
+    }
+    const playlistData = await playlistRes.json();
+
+    const mapItem = (item) => {
+      if (!item?.track) return null;
+      return {
+        id:         item.track.id ?? Math.random().toString(36).slice(2),
+        name:       item.track.name ?? "Unknown",
+        artists:    (item.track.artists ?? []).map((a) => a.name).join(", ") || "Unknown Artist",
+        durationMs: item.track.duration_ms ?? 0,
+      };
+    };
+
+    let allTracks = (playlistData.tracks.items ?? []).map(mapItem).filter(Boolean);
+
+    // Step 3 — paginate through remaining pages (100 items per page)
+    let nextUrl = playlistData.tracks.next;
+    while (nextUrl) {
+      const pageRes = await fetch(nextUrl, { headers });
+      if (!pageRes.ok) break;
+      const pageData = await pageRes.json();
+      const pageTracks = (pageData.items ?? []).map(mapItem).filter(Boolean);
+      allTracks = allTracks.concat(pageTracks);
+      nextUrl = pageData.next ?? null;
+    }
+
+    return {
+      playlistName: playlistData.name ?? "Spotify Playlist",
+      total:        playlistData.tracks.total ?? allTracks.length,
+      tracks:       allTracks,
+    };
+  } catch (err) {
+    return { error: String(err?.message ?? err) };
+  }
+});
+
 // ── Delete a file from disk ───────────────────────────────────────────────────
 ipcMain.handle("delete-file", async (_event, filePath) => {
   try {

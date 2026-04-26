@@ -1,5 +1,18 @@
 export {};
 
+interface SpotifyTrack {
+  id: string;
+  name: string;
+  artists: string;
+  durationMs: number;
+}
+
+interface SpotifyPlaylistResult {
+  playlistName: string;
+  total: number;
+  tracks: SpotifyTrack[];
+}
+
 interface YtSearchResult {
   videoId: string;
   url: string;
@@ -76,6 +89,13 @@ declare global {
 
       /** Push playback state to the main process so the tray stays in sync. */
       updateTrayState: (state: { title: string; artist: string; isPlaying: boolean; volume: number }) => void;
+
+      /** Fetch all tracks from a Spotify playlist URL using the given credentials. */
+      spotifyFetchPlaylist: (params: {
+        playlistUrl: string;
+        clientId: string;
+        clientSecret: string;
+      }) => Promise<SpotifyPlaylistResult | { error: string }>;
 
       /** Bring the hidden window back to the foreground. */
       showWindow: () => Promise<void>;
