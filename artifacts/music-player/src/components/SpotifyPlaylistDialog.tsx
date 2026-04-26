@@ -65,79 +65,132 @@ function SpotifyLogo({ size = 16 }: { size?: number }) {
   );
 }
 
-// ── Credential row ────────────────────────────────────────────────────────────
+// ── Credential section ────────────────────────────────────────────────────────
 function CredentialSection({
   clientId, setClientId,
   clientSecret, setClientSecret,
+  onSaved,
 }: {
   clientId: string; setClientId: (v: string) => void;
   clientSecret: string; setClientSecret: (v: string) => void;
+  onSaved?: () => void;
 }) {
-  const [open, setOpen] = useState(!clientId || !clientSecret);
+  const isConnected = clientId.trim() !== "" && clientSecret.trim() !== "";
+  const [editing, setEditing] = useState(!isConnected);
+  const [localId,  setLocalId]  = useState(clientId);
+  const [localSec, setLocalSec] = useState(clientSecret);
 
   function save() {
+    const id  = localId.trim();
+    const sec = localSec.trim();
+    if (!id || !sec) return;
     try {
-      localStorage.setItem(LS_CLIENT_ID,  clientId.trim());
-      localStorage.setItem(LS_CLIENT_SEC, clientSecret.trim());
+      localStorage.setItem(LS_CLIENT_ID,  id);
+      localStorage.setItem(LS_CLIENT_SEC, sec);
     } catch {}
-    setOpen(false);
+    setClientId(id);
+    setClientSecret(sec);
+    setEditing(false);
+    onSaved?.();
   }
 
-  return (
-    <div className="rounded-lg border border-white/[0.07] overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="flex items-center gap-1.5" style={{ color: SP }}>
-          <SpotifyLogo size={13} />
-          Spotify credentials
+  // ── Already connected: show a tiny green pill ──────────────────────────────
+  if (isConnected && !editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          style={{ background: SP_DIM, color: SP, border: `1px solid ${SP_BORDER}` }}
+        >
+          <SpotifyLogo size={10} />
+          Spotify connected
         </span>
-        {open
-          ? <ChevronDown className="w-3.5 h-3.5" />
-          : <ChevronRight className="w-3.5 h-3.5" />}
-      </button>
+        <button
+          className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+          onClick={() => { setLocalId(clientId); setLocalSec(clientSecret); setEditing(true); }}
+        >
+          Change credentials
+        </button>
+      </div>
+    );
+  }
 
-      {open && (
-        <div className="px-3 pb-3 space-y-2 border-t border-white/[0.06]">
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Create a free app at{" "}
-            <a
-              href="https://developer.spotify.com/dashboard"
-              target="_blank"
-              rel="noreferrer"
-              className="underline hover:opacity-80"
-              style={{ color: SP }}
-            >
-              developer.spotify.com/dashboard
-            </a>
-            {" "}to get your Client ID and Secret.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Client ID"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="flex-1 h-8 text-xs font-mono"
-            />
-            <Input
-              type="password"
-              placeholder="Client Secret"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              className="flex-1 h-8 text-xs font-mono"
-            />
-            <Button
-              size="sm"
-              className="h-8 px-3 text-xs shrink-0"
-              style={{ background: SP, color: "#000" }}
-              onClick={save}
-            >
-              Save
-            </Button>
+  // ── First-time setup ───────────────────────────────────────────────────────
+  return (
+    <div
+      className="rounded-xl border p-4 space-y-3"
+      style={{ borderColor: SP_BORDER, background: SP_DIM }}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span style={{ color: SP }}><SpotifyLogo size={15} /></span>
+          <div>
+            <p className="text-sm font-semibold">One-time Spotify setup</p>
+            <p className="text-[11px] text-muted-foreground">Done once — saved forever on this machine.</p>
           </div>
         </div>
-      )}
+        {isConnected && (
+          <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Steps */}
+      <ol className="space-y-1.5 text-[11px] text-muted-foreground list-none">
+        <li className="flex gap-2">
+          <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: SP, color: "#000" }}>1</span>
+          Go to{" "}
+          <a
+            href="https://developer.spotify.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline hover:opacity-80"
+            style={{ color: SP }}
+          >
+            developer.spotify.com/dashboard
+          </a>
+        </li>
+        <li className="flex gap-2">
+          <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: SP, color: "#000" }}>2</span>
+          Click <strong className="text-foreground">Create app</strong> → any name → redirect URI{" "}
+          <code className="text-foreground bg-white/10 px-1 rounded">http://localhost</code>
+        </li>
+        <li className="flex gap-2">
+          <span className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: SP, color: "#000" }}>3</span>
+          Copy your <strong className="text-foreground">Client ID</strong> and{" "}
+          <strong className="text-foreground">Client Secret</strong> into the fields below
+        </li>
+      </ol>
+
+      {/* Fields */}
+      <div className="flex gap-2">
+        <Input
+          placeholder="Client ID"
+          value={localId}
+          onChange={(e) => setLocalId(e.target.value)}
+          className="flex-1 h-8 text-xs font-mono"
+          autoFocus
+        />
+        <Input
+          type="password"
+          placeholder="Client Secret"
+          value={localSec}
+          onChange={(e) => setLocalSec(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          className="flex-1 h-8 text-xs font-mono"
+        />
+        <Button
+          size="sm"
+          className="h-8 px-3 shrink-0 font-semibold"
+          style={localId.trim() && localSec.trim() ? { background: SP, color: "#000" } : undefined}
+          disabled={!localId.trim() || !localSec.trim()}
+          onClick={save}
+        >
+          Save &amp; connect
+        </Button>
+      </div>
     </div>
   );
 }
@@ -218,7 +271,7 @@ export function SpotifyPlaylistDialog({ open, onOpenChange }: Props) {
     const trimmed = url.trim();
     if (!trimmed) return;
     if (!clientId.trim() || !clientSecret.trim()) {
-      setFetchErr("Please save your Spotify Client ID and Secret first.");
+      setFetchErr("Complete the one-time Spotify setup above first.");
       return;
     }
     setFetchErr("");
@@ -416,6 +469,13 @@ export function SpotifyPlaylistDialog({ open, onOpenChange }: Props) {
           <CredentialSection
             clientId={clientId} setClientId={setClientId}
             clientSecret={clientSecret} setClientSecret={setClientSecret}
+            onSaved={() => {
+              // Auto-focus the URL input after saving credentials
+              setTimeout(() => {
+                const inp = document.querySelector<HTMLInputElement>("[data-spotify-url]");
+                inp?.focus();
+              }, 50);
+            }}
           />
 
           {/* ── URL input ── */}
@@ -423,6 +483,7 @@ export function SpotifyPlaylistDialog({ open, onOpenChange }: Props) {
             <div className="space-y-2">
               <div className="flex gap-2">
                 <Input
+                  data-spotify-url
                   placeholder="Paste Spotify playlist link…"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
