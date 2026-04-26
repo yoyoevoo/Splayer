@@ -26,18 +26,31 @@ const OLD_DATA_DIRS = [
 app.setPath("userData", USERDATA_DIR);
 
 // Migrate data from the first old directory that has real Electron session data.
-// We check for the presence of "Default/" (where Chrome stores localStorage /
-// IndexedDB) so we never copy an empty skeleton created by a previous launch.
+// "Real data" means the IndexedDB directory exists and has at least one database —
+// an empty skeleton created by a previous launch will NOT have that.
 (function migrateUserData() {
   const fsSync = require("fs");
-  // Skip if we already have real session data in the target location.
-  if (fsSync.existsSync(path.join(USERDATA_DIR, "Default"))) return;
+
+  // Helper: does this userData dir contain actual track / playlist data?
+  function hasRealData(dir) {
+    try {
+      const idbDir = path.join(dir, "Default", "IndexedDB");
+      return fsSync.existsSync(idbDir) && fsSync.readdirSync(idbDir).length > 0;
+    } catch (_) { return false; }
+  }
+
+  // Skip migration only if the DESTINATION already has real user data.
+  if (hasRealData(USERDATA_DIR)) return;
 
   for (const oldDir of OLD_DATA_DIRS) {
-    const oldDefault = path.join(oldDir, "Default");
-    if (!fsSync.existsSync(oldDefault)) continue;
+    // Only migrate from a source that actually has real data.
+    if (!hasRealData(oldDir)) continue;
     try {
-      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true, force: false, errorOnExist: false });
+      // Remove the empty skeleton so cpSync can copy cleanly.
+      if (fsSync.existsSync(USERDATA_DIR)) {
+        fsSync.rmSync(USERDATA_DIR, { recursive: true, force: true });
+      }
+      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true });
       console.log("[splayer] Migrated user data:", oldDir, "→", USERDATA_DIR);
     } catch (e) {
       console.warn("[splayer] Migration warning:", e.message);
