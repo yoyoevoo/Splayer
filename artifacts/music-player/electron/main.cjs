@@ -9,28 +9,40 @@ app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("disable-setuid-sandbox");
 
 // ── Pin userData path ─────────────────────────────────────────────────────────
-// Keep the storage directory fixed at ~/.config/splayer regardless of
-// the productName. This prevents library/settings loss if future renames occur.
-const USERDATA_DIR  = path.join(os.homedir(), ".config", "splayer");
+// Keep the storage directory fixed at ~/.config/splayer forever.
+// This prevents any future rename from relocating library / settings data.
+const USERDATA_DIR = path.join(os.homedir(), ".config", "splayer");
+
+// All previous locations this app may have stored data in, most-preferred first.
+// "Music Player"  → original productName default
+// "Splayer"       → after the first rename (Electron default, capital S)
+// "music-player"  → possible alternate casing
 const OLD_DATA_DIRS = [
   path.join(os.homedir(), ".config", "Music Player"),
+  path.join(os.homedir(), ".config", "Splayer"),
   path.join(os.homedir(), ".config", "music-player"),
 ];
+
 app.setPath("userData", USERDATA_DIR);
 
-// Migrate data from any old directory (runs sync before app is ready)
+// Migrate data from the first old directory that has real Electron session data.
+// We check for the presence of "Default/" (where Chrome stores localStorage /
+// IndexedDB) so we never copy an empty skeleton created by a previous launch.
 (function migrateUserData() {
   const fsSync = require("fs");
+  // Skip if we already have real session data in the target location.
+  if (fsSync.existsSync(path.join(USERDATA_DIR, "Default"))) return;
+
   for (const oldDir of OLD_DATA_DIRS) {
-    if (!fsSync.existsSync(oldDir)) continue;
-    if (fsSync.existsSync(USERDATA_DIR)) break; // already migrated
+    const oldDefault = path.join(oldDir, "Default");
+    if (!fsSync.existsSync(oldDefault)) continue;
     try {
-      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true });
-      console.log("[splayer] Migrated user data from", oldDir, "→", USERDATA_DIR);
+      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true, force: false, errorOnExist: false });
+      console.log("[splayer] Migrated user data:", oldDir, "→", USERDATA_DIR);
     } catch (e) {
-      console.warn("[splayer] Could not migrate user data:", e.message);
+      console.warn("[splayer] Migration warning:", e.message);
     }
-    break;
+    break; // only migrate from the first (best) source found
   }
 })();
 
