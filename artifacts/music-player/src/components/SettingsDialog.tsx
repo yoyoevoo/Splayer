@@ -16,6 +16,13 @@ import {
   saveStoredTrack,
   saveStoredPlaylist,
 } from "@/lib/idb";
+import {
+  AB,
+  abEnabled,
+  abFreqDays,
+  abLastLabel,
+  runAutoBackup,
+} from "@/lib/auto-backup";
 
 // ── localStorage keys ────────────────────────────────────────────────────────
 
@@ -205,6 +212,47 @@ function BackupSection() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Auto-backup state ──────────────────────────────────────────────────────
+  const [autoEnabled, setAutoEnabled]   = useState(() => abEnabled());
+  const [autoFreq, setAutoFreq]         = useState(() => abFreqDays());
+  const [autoLast, setAutoLast]         = useState(() => abLastLabel());
+  const [autoStatus, setAutoStatus]     = useState<string | null>(null);
+  const [autoRunning, setAutoRunning]   = useState(false);
+  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const noFolder = !(localStorage.getItem("settings-downloads-path")?.trim());
+
+  function flashAuto(msg: string) {
+    setAutoStatus(msg);
+    if (autoTimerRef.current) clearTimeout(autoTimerRef.current);
+    autoTimerRef.current = setTimeout(() => setAutoStatus(null), 4000);
+  }
+
+  function toggleAuto() {
+    const next = !autoEnabled;
+    setAutoEnabled(next);
+    localStorage.setItem(AB.enabled, String(next));
+  }
+
+  function changeFreq(days: number) {
+    setAutoFreq(days);
+    localStorage.setItem(AB.freqDays, String(days));
+  }
+
+  async function testAutoBackup() {
+    setAutoRunning(true);
+    const result = await runAutoBackup();
+    if (result === "ok") {
+      setAutoLast(abLastLabel());
+      flashAuto("✅ Backup saved to Downloads");
+    } else if (result === "no-folder") {
+      flashAuto("❌ Set your Downloads folder first (Folders tab)");
+    } else {
+      flashAuto("❌ Backup failed — check console");
+    }
+    setAutoRunning(false);
+  }
+
   function flash(msg: string) {
     setStatus(msg);
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -345,6 +393,93 @@ function BackupSection() {
       {status && (
         <p className="text-xs text-green-500 mt-2">{status}</p>
       )}
+
+      <hr className="border-card-border" />
+
+      {/* ── Auto Backup ─────────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">Auto Backup</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Automatically save backups to your Downloads folder on a schedule.
+            </p>
+          </div>
+          {/* Toggle switch */}
+          <button
+            onClick={toggleAuto}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+              autoEnabled ? "bg-primary" : "bg-muted",
+            )}
+            role="switch"
+            aria-checked={autoEnabled}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform duration-200",
+                autoEnabled ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+        </div>
+
+        {autoEnabled && (
+          <div className="space-y-3 pl-1">
+            {/* Frequency selector */}
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-muted-foreground whitespace-nowrap">Frequency:</p>
+              <div className="flex gap-1.5">
+                {([3, 7, 14] as const).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => changeFreq(d)}
+                    className={cn(
+                      "px-3 py-1 text-xs rounded-md border transition-colors",
+                      autoFreq === d
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-card-border text-muted-foreground hover:text-foreground hover:border-foreground/30",
+                    )}
+                  >
+                    {d === 3 ? "Every 3 days" : d === 7 ? "Every 7 days" : "Every 14 days"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Last backup timestamp */}
+            <p className="text-xs text-muted-foreground">
+              Last backup:{" "}
+              <span className={cn("font-medium", autoLast === "Never" ? "text-muted-foreground/60" : "text-foreground")}>
+                {autoLast}
+              </span>
+            </p>
+
+            {/* Warning if no Downloads folder set */}
+            {noFolder && (
+              <p className="text-xs text-amber-500/90">
+                ⚠️ Set your Downloads folder in the Folders tab for auto backup to work.
+              </p>
+            )}
+
+            {/* Test button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs h-7"
+              onClick={testAutoBackup}
+              disabled={autoRunning || noFolder}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              {autoRunning ? "Saving…" : "Back up now"}
+            </Button>
+
+            {autoStatus && (
+              <p className="text-xs text-green-500">{autoStatus}</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

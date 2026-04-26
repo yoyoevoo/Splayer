@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Player from "@/pages/Player";
 import { PlayerProvider, usePlayer } from "@/lib/player-context";
+import { checkAndRunAutoBackup } from "@/lib/auto-backup";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ function TrayBridge() {
   useEffect(() => {
     const behavior = (localStorage.getItem("settings-close-behavior") ?? "tray") as "tray" | "close";
     api?.setCloseBehavior?.(behavior);
+    checkAndRunAutoBackup();
   }, []);
 
   useEffect(() => {
