@@ -8,6 +8,32 @@ app.commandLine.appendSwitch("no-sandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("disable-setuid-sandbox");
 
+// ── Pin userData path ─────────────────────────────────────────────────────────
+// Keep the storage directory fixed at ~/.config/splayer regardless of
+// the productName. This prevents library/settings loss if future renames occur.
+const USERDATA_DIR  = path.join(os.homedir(), ".config", "splayer");
+const OLD_DATA_DIRS = [
+  path.join(os.homedir(), ".config", "Music Player"),
+  path.join(os.homedir(), ".config", "music-player"),
+];
+app.setPath("userData", USERDATA_DIR);
+
+// Migrate data from any old directory (runs sync before app is ready)
+(function migrateUserData() {
+  const fsSync = require("fs");
+  for (const oldDir of OLD_DATA_DIRS) {
+    if (!fsSync.existsSync(oldDir)) continue;
+    if (fsSync.existsSync(USERDATA_DIR)) break; // already migrated
+    try {
+      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true });
+      console.log("[splayer] Migrated user data from", oldDir, "→", USERDATA_DIR);
+    } catch (e) {
+      console.warn("[splayer] Could not migrate user data:", e.message);
+    }
+    break;
+  }
+})();
+
 // ── Tray & close-behavior state ───────────────────────────────────────────────
 let mainWindow   = null;
 let tray         = null;
