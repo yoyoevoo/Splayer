@@ -729,7 +729,7 @@ export function HomeDashboard() {
 
   if (dashView.kind === "album") {
     return (
-      <>
+      <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
         <AlbumDetailView
           group={dashView.group}
           onBack={() => setDashView({ kind: "dashboard" })}
@@ -742,13 +742,13 @@ export function HomeDashboard() {
           onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
           onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
         />
-      </>
+      </div>
     );
   }
 
   if (dashView.kind === "artist") {
     return (
-      <>
+      <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
         <ArtistDetailView
           group={dashView.group}
           onBack={() => setDashView({ kind: "dashboard" })}
@@ -761,7 +761,7 @@ export function HomeDashboard() {
           onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
           onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
         />
-      </>
+      </div>
     );
   }
 

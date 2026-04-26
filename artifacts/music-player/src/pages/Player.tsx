@@ -31,6 +31,7 @@ import { HomeDashboard } from "@/components/HomeDashboard";
 import { YoutubeDownloadDialog } from "@/components/YoutubeDownloadDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { motion, AnimatePresence } from "framer-motion";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export default function Player() {
   const {
@@ -220,13 +221,24 @@ export default function Player() {
       <div className="flex-1 flex overflow-hidden">
         {miniMode ? (
           <>
-            <HomeDashboard />
-            <Playlist />
+            {/* Stable flex-1 wrapper ensures HomeDashboard always owns its slot */}
+            <ErrorBoundary>
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <HomeDashboard />
+              </div>
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <Playlist />
+            </ErrorBoundary>
           </>
         ) : hasTracks ? (
           <>
-            <NowPlaying />
-            <Playlist />
+            <ErrorBoundary>
+              <NowPlaying />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <Playlist />
+            </ErrorBoundary>
           </>
         ) : (
           <EmptyState />
