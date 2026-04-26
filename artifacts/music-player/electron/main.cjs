@@ -880,8 +880,8 @@ app.whenReady().then(() => {
   setupTrayScrollMonitor();
 
   // Global shortcuts for volume control (work even when the window is hidden/minimized)
-  globalShortcut.register("Control+Up",   () => adjustVolume(1));
-  globalShortcut.register("Control+Down", () => adjustVolume(-1));
+  globalShortcut.register("Control+Up",   () => adjustVolume(5));
+  globalShortcut.register("Control+Down", () => adjustVolume(-5));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
