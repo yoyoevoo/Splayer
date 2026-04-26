@@ -26,37 +26,65 @@ const OLD_DATA_DIRS = [
 app.setPath("userData", USERDATA_DIR);
 
 // Migrate data from the first old directory that has real Electron session data.
-// "Real data" means the IndexedDB directory exists and has at least one database —
-// an empty skeleton created by a previous launch will NOT have that.
+// Uses renameSync (atomic, instant) with a cpSync fallback for cross-device moves.
+// Writes a plain-text log to ~/.config/splayer-migration.log for debugging.
 (function migrateUserData() {
   const fsSync = require("fs");
+  const logPath = path.join(os.homedir(), ".config", "splayer-migration.log");
 
-  // Helper: does this userData dir contain actual track / playlist data?
+  function log(msg) {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    try { fsSync.appendFileSync(logPath, line); } catch (_) {}
+    console.log("[splayer]", msg);
+  }
+
+  // "Real data" = IndexedDB folder exists and is non-empty.
+  // Electron creates an empty Default/ skeleton on first launch; that doesn't count.
   function hasRealData(dir) {
     try {
       const idbDir = path.join(dir, "Default", "IndexedDB");
-      return fsSync.existsSync(idbDir) && fsSync.readdirSync(idbDir).length > 0;
-    } catch (_) { return false; }
+      if (!fsSync.existsSync(idbDir)) { log(`  no IndexedDB at ${idbDir}`); return false; }
+      const entries = fsSync.readdirSync(idbDir);
+      log(`  IndexedDB at ${idbDir}: [${entries.join(", ")}]`);
+      return entries.length > 0;
+    } catch (e) { log(`  error reading ${dir}: ${e.message}`); return false; }
   }
 
-  // Skip migration only if the DESTINATION already has real user data.
-  if (hasRealData(USERDATA_DIR)) return;
+  log(`=== Splayer startup ===`);
+  log(`USERDATA_DIR: ${USERDATA_DIR}`);
+  log(`Checking destination for real data...`);
+  if (hasRealData(USERDATA_DIR)) { log("Destination has data — no migration needed."); return; }
 
+  log("Destination is empty. Scanning old locations...");
   for (const oldDir of OLD_DATA_DIRS) {
-    // Only migrate from a source that actually has real data.
-    if (!hasRealData(oldDir)) continue;
+    log(`Checking: ${oldDir}`);
+    if (!fsSync.existsSync(oldDir)) { log("  does not exist, skipping."); continue; }
+    if (!hasRealData(oldDir)) { log("  exists but has no real data, skipping."); continue; }
+
+    log(`Found data in: ${oldDir}. Migrating → ${USERDATA_DIR}`);
     try {
-      // Remove the empty skeleton so cpSync can copy cleanly.
+      // Wipe the empty skeleton first so we get a clean target.
       if (fsSync.existsSync(USERDATA_DIR)) {
+        log("  Removing empty destination skeleton...");
         fsSync.rmSync(USERDATA_DIR, { recursive: true, force: true });
       }
-      fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true });
-      console.log("[splayer] Migrated user data:", oldDir, "→", USERDATA_DIR);
+      // Try rename first (instant, atomic, same filesystem).
+      try {
+        fsSync.renameSync(oldDir, USERDATA_DIR);
+        log("  renameSync succeeded.");
+      } catch (renameErr) {
+        // Falls back to full copy if rename crosses device boundaries.
+        log(`  renameSync failed (${renameErr.message}), trying cpSync...`);
+        fsSync.cpSync(oldDir, USERDATA_DIR, { recursive: true });
+        log("  cpSync succeeded.");
+      }
+      log("Migration complete.");
     } catch (e) {
-      console.warn("[splayer] Migration warning:", e.message);
+      log(`MIGRATION FAILED: ${e.message}`);
     }
-    break; // only migrate from the first (best) source found
+    return;
   }
+  log("No old data found in any known location. Starting fresh.");
 })();
 
 // ── Tray & close-behavior state ───────────────────────────────────────────────
