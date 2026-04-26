@@ -8,7 +8,7 @@ import { PlayerProvider, usePlayer } from "@/lib/player-context";
 const queryClient = new QueryClient();
 
 function TrayBridge() {
-  const { currentTrack, isPlaying, togglePlay, next, prev } = usePlayer();
+  const { currentTrack, isPlaying, togglePlay, next, prev, volume, setVolume } = usePlayer();
   const api = window.electronAPI;
 
   useEffect(() => {
@@ -21,17 +21,29 @@ function TrayBridge() {
       title:     currentTrack?.title  ?? "Nothing playing",
       artist:    currentTrack?.artist ?? "",
       isPlaying,
+      volume:    Math.round(volume * 100),
     });
-  }, [currentTrack, isPlaying]);
+  }, [currentTrack, isPlaying, volume]);
 
   useEffect(() => {
-    const cleanup = api?.onTrayAction?.((action) => {
-      if (action === "play-pause") togglePlay();
-      else if (action === "next")  next();
-      else if (action === "prev")  prev();
+    const cleanup = api?.onTrayAction?.((action: unknown) => {
+      if (action === "play-pause") {
+        togglePlay();
+      } else if (action === "next") {
+        next();
+      } else if (action === "prev") {
+        prev();
+      } else if (
+        action !== null &&
+        typeof action === "object" &&
+        (action as Record<string, unknown>).type === "set-volume"
+      ) {
+        const vol = (action as Record<string, unknown>).volume as number;
+        setVolume(Math.max(0, Math.min(1, vol / 100)));
+      }
     });
     return cleanup ?? undefined;
-  }, [togglePlay, next, prev]);
+  }, [togglePlay, next, prev, setVolume]);
 
   return null;
 }

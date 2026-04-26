@@ -14,6 +14,8 @@ let tray         = null;
 let closeBehavior = "tray"; // "tray" | "close"
 let isQuitting   = false;
 let nowPlayingState = { title: "Nothing playing", artist: "", isPlaying: false };
+let trayVolume   = 100;           // 0-100, kept in sync with renderer
+let volumeTooltipTimer = null;    // used to restore normal tooltip after scroll
 
 function getTrayIconPath() {
   return app.isPackaged
@@ -81,6 +83,33 @@ function createTray() {
     tray.setContextMenu(buildTrayMenu());
     tray.on("double-click", () => {
       if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    });
+
+    tray.on("scroll", (_event, _delta, direction) => {
+      if (direction === "up") {
+        trayVolume = Math.min(100, trayVolume + 1);
+      } else if (direction === "down") {
+        trayVolume = Math.max(0, trayVolume - 1);
+      } else {
+        return; // ignore left/right
+      }
+
+      // Push new volume to renderer immediately
+      if (mainWindow) {
+        mainWindow.webContents.send("tray-action", { type: "set-volume", volume: trayVolume });
+      }
+
+      // Show volume in tooltip while scrolling
+      if (tray) {
+        tray.setToolTip(`🔊 Volume: ${trayVolume}`);
+      }
+
+      // Restore normal now-playing tooltip after 2 s of inactivity
+      if (volumeTooltipTimer) clearTimeout(volumeTooltipTimer);
+      volumeTooltipTimer = setTimeout(() => {
+        volumeTooltipTimer = null;
+        updateTray();
+      }, 2000);
     });
   } catch (e) {
     console.error("[Tray] Failed to create system tray:", e.message);
@@ -747,6 +776,10 @@ ipcMain.on("update-tray-state", (_event, state) => {
     artist:    String(state.artist    ?? ""),
     isPlaying: Boolean(state.isPlaying),
   };
+  // Keep trayVolume in sync with the renderer's current volume (0-100)
+  if (typeof state.volume === "number") {
+    trayVolume = Math.round(Math.max(0, Math.min(100, state.volume)));
+  }
   updateTray();
 });
 
