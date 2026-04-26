@@ -47,3 +47,5 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+artifacts/music-player/release/
+artifacts/music-player/node_modules/
