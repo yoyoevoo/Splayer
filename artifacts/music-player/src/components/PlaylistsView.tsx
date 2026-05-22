@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight,
   Clock,
+  Download,
   FolderX,
+  GitMerge,
+  GripVertical,
   Heart,
   History,
   ImagePlus,
@@ -15,14 +18,22 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
+import { exportPlaylistAsM3U } from "@/lib/export-playlist";
 import {
   trackCoverUrl,
   playlistDuration,
@@ -34,6 +45,7 @@ import { formatLongDuration, formatMonthYear } from "@/lib/format";
 import { MosaicCover } from "./MosaicCover";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { EditPlaylistDialog } from "./EditPlaylistDialog";
+import { MergePlaylistDialog } from "./MergePlaylistDialog";
 
 interface PlaylistsViewProps {
   onOpenPlaylist: (playlist: Playlist) => void;
@@ -63,13 +75,235 @@ function smartGradient(kind: SmartPlaylistKind): string {
   return "linear-gradient(135deg, hsl(140 50% 40%), hsl(180 55% 25%))";
 }
 
+function PlaylistRow({
+  p,
+  idx,
+  tracks,
+  onOpen,
+  onEdit,
+  onDelete,
+  onExport,
+  onMerge,
+  dragging,
+  dragOver,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+}: {
+  p: Playlist;
+  idx: number;
+  tracks: ReturnType<typeof usePlayer>["tracks"];
+  onOpen: (p: Playlist) => void;
+  onEdit: (p: Playlist) => void;
+  onDelete: (id: string) => void;
+  onExport: (p: Playlist) => void;
+  dragging?: boolean;
+  dragOver?: boolean;
+  onMerge?: (p: Playlist) => void;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+}) {
+  const trackCovers = p.trackIds
+    .map((id) => tracks.find((t) => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t))
+    .map((t) => trackCoverUrl(t));
+  const totalSec = playlistDuration(p, tracks);
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2, delay: idx * 0.02 }}
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      className="group flex items-stretch"
+      style={{ opacity: dragging ? 0.4 : 1 }}
+    >
+      {dragOver && <div className="h-0.5 bg-primary rounded-full mb-1" />}
+
+      <ContextMenu>
+        <ContextMenuTrigger className="flex items-stretch w-full">
+          {/* Grip handle — left gutter, outside the card */}
+          {onDragStart ? (
+            <div className="flex items-center justify-center w-5 shrink-0 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
+              <GripVertical className="w-3.5 h-3.5 text-muted-foreground/60" />
+            </div>
+          ) : (
+            <div className="w-0" />
+          )}
+
+          {/* Row card */}
+          <div
+            className="relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2 flex-1 min-w-0"
+            onClick={() => onOpen(p)}
+            data-testid={`playlist-${p.id}`}
+          >
+            <MosaicCover
+              customCoverUrl={p.customCoverUrl}
+              trackCovers={trackCovers}
+              seed={p.id + p.name}
+              size="md"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium truncate">{p.name}</div>
+              <div className="text-[11px] text-muted-foreground truncate">
+                {p.trackIds.length}{" "}
+                {p.trackIds.length === 1 ? "Track" : "Tracks"}
+                {p.createdAt ? ` • ${formatMonthYear(p.createdAt)}` : ""}
+              </div>
+            </div>
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {formatLongDuration(totalSec)}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 opacity-60 group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`playlist-menu-${p.id}`}
+                  aria-label="Playlist options"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(p); }}>
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(p); }}>
+                  <ImagePlus className="w-4 h-4 mr-2" />
+                  Change cover
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMerge?.(p); }}>
+                  <GitMerge className="w-4 h-4 mr-2" />
+                  Merge with another playlist
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onExport(p); }}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export as M3U
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Delete playlist "${p.name}"? Your music files stay safe.`)) {
+                      onDelete(p.id);
+                    }
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-52">
+          <ContextMenuItem onClick={() => onOpen(p)}>
+            Open playlist
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => onMerge?.(p)}>
+            <GitMerge className="w-4 h-4 mr-2" />
+            Merge with another playlist
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => onExport(p)}>
+            <Download className="w-4 h-4 mr-2" />
+            Export as M3U
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => onEdit(p)}>
+            <Pencil className="w-4 h-4 mr-2" />
+            Rename
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => onEdit(p)}>
+            <ImagePlus className="w-4 h-4 mr-2" />
+            Change cover
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => {
+              if (confirm(`Delete playlist "${p.name}"? Your music files stay safe.`)) {
+                onDelete(p.id);
+              }
+            }}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    </motion.li>
+  );
+}
+
 export function PlaylistsView({
   onOpenPlaylist,
   onOpenSmart,
 }: PlaylistsViewProps) {
-  const { tracks, playlists, deletePlaylist } = usePlayer();
+  const { tracks, playlists, deletePlaylist, reorderPlaylists } = usePlayer();
+  const handleExport = (p: Playlist) => exportPlaylistAsM3U(p, tracks);
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<Playlist | null>(null);
+  const [editing,  setEditing]  = useState<Playlist | null>(null);
+  const [merging,  setMerging]  = useState<Playlist | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const draggedIdRef = useRef<string | null>(null);
+
+  function handleDragStart(id: string) {
+    draggedIdRef.current = id;
+    setDraggedId(id);
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault();
+    if (draggedIdRef.current !== id) setDragOverId(id);
+  }
+
+  function handleDrop(ids: string[]) {
+    const fromId = draggedIdRef.current;
+    const toId = dragOverId;
+    if (!fromId || !toId || fromId === toId) { clearDrag(); return; }
+    const fromIdx = ids.indexOf(fromId);
+    const toIdx   = ids.indexOf(toId);
+    if (fromIdx === -1 || toIdx === -1) { clearDrag(); return; }
+    const next = [...ids];
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, fromId);
+    reorderPlaylists(next);
+    clearDrag();
+  }
+
+  function clearDrag() {
+    setDraggedId(null);
+    setDragOverId(null);
+    draggedIdRef.current = null;
+  }
+
+  const gamePlaylistIds = useMemo(() => {
+    try {
+      const reg = JSON.parse(
+        localStorage.getItem("game-playlist-registry") ?? "{}",
+      ) as Record<string, string>;
+      return new Set(Object.values(reg));
+    } catch {
+      return new Set<string>();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlists]);
+
+  const gamePlaylists = playlists.filter(p => gamePlaylistIds.has(p.id));
+  const userPlaylists = playlists.filter(p => !gamePlaylistIds.has(p.id));
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -94,7 +328,7 @@ export function PlaylistsView({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
         <div className="p-2 space-y-1">
           <div className="px-2 pt-1 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium">
             Smart
@@ -132,11 +366,40 @@ export function PlaylistsView({
               </button>
             );
           })}
-          <div className="px-2 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium">
-            Yours
-          </div>
+          {gamePlaylists.length > 0 && (
+            <div className="px-2 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium">
+              Games
+            </div>
+          )}
         </div>
-        {playlists.length === 0 ? (
+
+        {/* ── Game auto-playlists ── */}
+        {gamePlaylists.length > 0 && (
+          <ul className="px-2 pb-0 space-y-1">
+            <AnimatePresence initial={false}>
+              {gamePlaylists.map((p, idx) => (
+                <PlaylistRow
+                  key={p.id}
+                  p={p}
+                  idx={idx}
+                  tracks={tracks}
+                  onOpen={onOpenPlaylist}
+                  onEdit={setEditing}
+                  onDelete={deletePlaylist}
+                  onExport={handleExport}
+                  onMerge={setMerging}
+                />
+              ))}
+            </AnimatePresence>
+          </ul>
+        )}
+
+        <div className="px-2 pt-3 pb-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/80 font-medium mx-2">
+          Yours
+        </div>
+
+        {/* ── User playlists ── */}
+        {userPlaylists.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <div className="text-sm text-muted-foreground mb-4">
               No playlists yet
@@ -153,108 +416,36 @@ export function PlaylistsView({
             </Button>
           </div>
         ) : (
-          <ul className="p-2 pt-0 space-y-1">
+          <ul
+            className="pr-2 pb-2 pt-0 space-y-1"
+            onDrop={() => handleDrop(userPlaylists.map((p) => p.id))}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) clearDrag();
+            }}
+          >
             <AnimatePresence initial={false}>
-              {playlists.map((p, idx) => {
-                const trackCovers = p.trackIds
-                  .map((id) => tracks.find((t) => t.id === id))
-                  .filter(
-                    (t): t is NonNullable<typeof t> => Boolean(t),
-                  )
-                  .map((t) => trackCoverUrl(t));
-                const totalSec = playlistDuration(p, tracks);
-                return (
-                  <motion.li
-                    key={p.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ duration: 0.2, delay: idx * 0.02 }}
-                  >
-                    <div
-                      className="group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2"
-                      onClick={() => onOpenPlaylist(p)}
-                      data-testid={`playlist-${p.id}`}
-                    >
-                      <MosaicCover
-                        customCoverUrl={p.customCoverUrl}
-                        trackCovers={trackCovers}
-                        seed={p.id + p.name}
-                        size="md"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">
-                          {p.name}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground truncate">
-                          {p.trackIds.length}{" "}
-                          {p.trackIds.length === 1 ? "Track" : "Tracks"}
-                          {p.createdAt
-                            ? ` • ${formatMonthYear(p.createdAt)}`
-                            : ""}
-                        </div>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground tabular-nums">
-                        {formatLongDuration(totalSec)}
-                      </span>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 opacity-60 group-hover:opacity-100"
-                            onClick={(e) => e.stopPropagation()}
-                            data-testid={`playlist-menu-${p.id}`}
-                            aria-label="Playlist options"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditing(p);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditing(p);
-                            }}
-                          >
-                            <ImagePlus className="w-4 h-4 mr-2" />
-                            Change cover
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (
-                                confirm(
-                                  `Delete playlist "${p.name}"? Your music files stay safe.`,
-                                )
-                              ) {
-                                deletePlaylist(p.id);
-                              }
-                            }}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </motion.li>
-                );
-              })}
+              {userPlaylists.map((p, idx) => (
+                <PlaylistRow
+                  key={p.id}
+                  p={p}
+                  idx={idx}
+                  tracks={tracks}
+                  onOpen={onOpenPlaylist}
+                  onEdit={setEditing}
+                  onDelete={deletePlaylist}
+                  onExport={handleExport}
+                  onMerge={setMerging}
+                  dragging={draggedId === p.id}
+                  dragOver={dragOverId === p.id}
+                  onDragStart={() => handleDragStart(p.id)}
+                  onDragOver={(e) => handleDragOver(e, p.id)}
+                  onDragEnd={clearDrag}
+                />
+              ))}
             </AnimatePresence>
           </ul>
         )}
-      </ScrollArea>
+      </div>
 
       <NewPlaylistDialog open={creating} onOpenChange={setCreating} />
       {editing && (
@@ -262,6 +453,13 @@ export function PlaylistsView({
           open={!!editing}
           onOpenChange={(o) => !o && setEditing(null)}
           playlist={editing}
+        />
+      )}
+      {merging && (
+        <MergePlaylistDialog
+          open={!!merging}
+          onOpenChange={(o) => !o && setMerging(null)}
+          playlist={merging}
         />
       )}
     </div>

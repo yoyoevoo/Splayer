@@ -4,6 +4,7 @@
  * then saves the result via Electron IPC (main-process fs.writeFile).
  */
 import type { Track } from "./types";
+import { platformAPI } from "./platform-api";
 // browser-id3-writer is a CJS module — import the namespace and cast
 import * as ID3WriterModule from "browser-id3-writer";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,7 +27,7 @@ export async function writeID3ToFile(
   update: TagUpdate,
   outputPath: string,
 ): Promise<{ success: boolean; error?: string }> {
-  if (!window.electronAPI) {
+  if (!platformAPI) {
     return { success: false, error: "Electron API not available" };
   }
 
@@ -53,7 +54,7 @@ export async function writeID3ToFile(
     const arrayBuffer = await blob.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    return window.electronAPI.writeFile(outputPath, bytes);
+    return platformAPI.writeFile(outputPath, bytes);
   } catch (err) {
     return { success: false, error: String(err) };
   }

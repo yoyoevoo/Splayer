@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { platformAPI, currentPlatform } from "@/lib/platform-api";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ import { CheckSquare2, FolderOutput, HardDrive, Square } from "lucide-react";
 interface BulkTagEditorProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialTrackIds?: string[];
 }
 
 type FieldKey = "title" | "artist" | "album" | "year" | "genre";
@@ -36,11 +38,18 @@ const FIELDS: { key: FieldKey; label: string; placeholder: string }[] = [
 
 type SavePhase = "idle" | "saving" | "done";
 
-export function BulkTagEditor({ open, onOpenChange }: BulkTagEditorProps) {
+export function BulkTagEditor({ open, onOpenChange, initialTrackIds }: BulkTagEditorProps) {
   const { tracks, updateTrackInfo } = usePlayer();
 
   // ── selection ────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Apply initial selection when the dialog opens with pre-selected tracks
+  useEffect(() => {
+    if (open && initialTrackIds && initialTrackIds.length > 0) {
+      setSelectedIds(new Set(initialTrackIds));
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTrack = (id: string) =>
     setSelectedIds((prev) => {
@@ -72,7 +81,7 @@ export function BulkTagEditor({ open, onOpenChange }: BulkTagEditorProps) {
 
   // ── write-to-files toggle ─────────────────────────────────────────────────
   const [writeFiles,  setWriteFiles]  = useState(false);
-  const hasElectron = typeof window !== "undefined" && !!window.electronAPI;
+  const hasElectron = typeof window !== "undefined" && !!platformAPI;
 
   // ── save state ────────────────────────────────────────────────────────────
   const [phase,    setPhase]    = useState<SavePhase>("idle");
@@ -92,7 +101,7 @@ export function BulkTagEditor({ open, onOpenChange }: BulkTagEditorProps) {
 
     let outputFolder: string | null = null;
     if (writeFiles && hasElectron) {
-      outputFolder = await window.electronAPI!.showFolderDialog();
+      outputFolder = await platformAPI!.showFolderDialog();
       if (!outputFolder) return; // user cancelled picker
     }
 
@@ -141,192 +150,208 @@ export function BulkTagEditor({ open, onOpenChange }: BulkTagEditorProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-      <DialogContent className="max-w-4xl w-full p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl w-[95vw] sm:w-full p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-border">
           <DialogTitle className="text-base font-semibold">Bulk Tag Editor</DialogTitle>
         </DialogHeader>
 
-        <div className="flex min-h-0" style={{ height: "calc(90vh - 80px)", maxHeight: 600 }}>
+        {/* ── MOBILE / Android layout (single scrollable column) ──────────────── */}
+        <div className={cn("flex-1 flex flex-col min-h-0", currentPlatform !== "android" && "md:hidden")}>
+          {/* Select-all */}
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-muted/20 shrink-0">
+            <Checkbox
+              id="select-all-m"
+              checked={allSelected ? true : someSelected ? "indeterminate" : false}
+              onCheckedChange={toggleAll}
+            />
+            <label htmlFor="select-all-m" className="text-xs font-medium cursor-pointer select-none">
+              Select all
+            </label>
+            <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+              {selectedIds.size}/{tracks.length}
+            </span>
+          </div>
 
-          {/* ── LEFT: track list ─────────────────────────────────────────── */}
-          <div className="w-56 flex flex-col border-r border-border shrink-0">
-            {/* Select-all header */}
-            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-muted/20">
-              <Checkbox
-                id="select-all"
-                checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                onCheckedChange={toggleAll}
-              />
-              <label htmlFor="select-all" className="text-xs font-medium cursor-pointer select-none">
-                Select all
-              </label>
-              <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
-                {selectedIds.size}/{tracks.length}
-              </span>
-            </div>
-
-            <ScrollArea className="flex-1">
+          {/* Song list — fixed 35 % of viewport height */}
+          <div className="border-b border-border shrink-0 overflow-hidden" style={{ height: "35vh" }}>
+            <ScrollArea className="h-full">
               {tracks.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center p-6">
-                  No tracks in library
-                </p>
+                <p className="text-xs text-muted-foreground text-center p-6">No tracks in library</p>
               ) : (
                 <ul className="p-1.5 space-y-0.5">
                   {tracks.map((t) => (
-                    <TrackRow
-                      key={t.id}
-                      track={t}
-                      selected={selectedIds.has(t.id)}
-                      onToggle={() => toggleTrack(t.id)}
-                    />
+                    <TrackRow key={t.id} track={t} selected={selectedIds.has(t.id)} onToggle={() => toggleTrack(t.id)} />
                   ))}
                 </ul>
               )}
             </ScrollArea>
           </div>
 
-          {/* ── RIGHT: edit form ──────────────────────────────────────────── */}
-          <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
+          {/* Edit fields — scrollable */}
+          <div className="flex-1 overflow-auto px-4 py-3 space-y-3 min-h-0">
+            <p className="text-xs text-muted-foreground">
+              Check a field to apply it. Unchecked fields are left unchanged.
+            </p>
+            {FIELDS.map(({ key, label, placeholder }) => (
+              <div key={key} className="flex items-center gap-2">
+                <Checkbox
+                  id={`m-field-${key}`}
+                  checked={enabled[key]}
+                  onCheckedChange={(c) => setEn(key, !!c)}
+                />
+                <label htmlFor={`m-field-${key}`} className="text-xs w-12 shrink-0 cursor-pointer text-muted-foreground">
+                  {label}
+                </label>
+                <Input
+                  className="flex-1 h-8 text-sm"
+                  placeholder={placeholder}
+                  value={values[key]}
+                  disabled={!enabled[key]}
+                  onChange={(e) => { setVal(key, e.target.value); if (!enabled[key]) setEn(key, true); }}
+                  onFocus={() => setEn(key, true)}
+                />
+              </div>
+            ))}
+            {hasElectron && (
+              <div className="flex items-start gap-2 pt-1">
+                <Checkbox
+                  id="m-write-files"
+                  checked={writeFiles}
+                  onCheckedChange={(c) => setWriteFiles(!!c)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="m-write-files" className="text-xs cursor-pointer select-none flex items-center gap-1.5">
+                  <FolderOutput className="w-3 h-3 text-muted-foreground" />
+                  Also write ID3 tags to files
+                </label>
+              </div>
+            )}
+          </div>
 
-              {/* Selection summary */}
+          {/* Apply — pinned at bottom */}
+          <div className="shrink-0 px-4 py-3 border-t border-border bg-muted/10 space-y-2">
+            {phase === "saving" && (
+              <div className="space-y-1">
+                <Progress value={progress} className="h-1.5" />
+                <p className="text-xs text-muted-foreground text-right tabular-nums">{progress}%</p>
+              </div>
+            )}
+            {phase === "done" && result && (
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                <span className="text-emerald-400 font-medium">{result.saved} updated</span>
+                {result.written > 0 && <span className="text-muted-foreground">· {result.written} to disk</span>}
+                {result.failed > 0 && <span className="text-destructive">· {result.failed} failed</span>}
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              {phase === "done" && <Button variant="ghost" size="sm" onClick={reset}>Edit more</Button>}
+              <Button size="sm" onClick={handleApply} disabled={!canApply} className="flex-1">
+                {phase === "saving" ? "Saving…" : phase === "done" ? "Done"
+                  : `Apply to ${selectedIds.size || "0"} Song${selectedIds.size === 1 ? "" : "s"}`}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── DESKTOP layout (two-panel side by side) — never on Android ──────── */}
+        {currentPlatform !== "android" && <div className="flex-1 hidden md:flex flex-row min-h-0" style={{ height: "calc(90vh - 80px)", maxHeight: 600 }}>
+          {/* LEFT: track list */}
+          <div className="w-56 flex flex-col border-r border-border shrink-0">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-muted/20">
+              <Checkbox
+                id="select-all"
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={toggleAll}
+              />
+              <label htmlFor="select-all" className="text-xs font-medium cursor-pointer select-none">Select all</label>
+              <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">{selectedIds.size}/{tracks.length}</span>
+            </div>
+            <ScrollArea className="flex-1">
+              {tracks.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center p-6">No tracks in library</p>
+              ) : (
+                <ul className="p-1.5 space-y-0.5">
+                  {tracks.map((t) => (
+                    <TrackRow key={t.id} track={t} selected={selectedIds.has(t.id)} onToggle={() => toggleTrack(t.id)} />
+                  ))}
+                </ul>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* RIGHT: edit form */}
+          <div className="flex-1 flex flex-col min-h-0 min-w-0">
+            <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
               <div className="flex items-center gap-2">
-                {selectedIds.size > 0 ? (
-                  <CheckSquare2 className="w-4 h-4 text-primary shrink-0" />
-                ) : (
-                  <Square className="w-4 h-4 text-muted-foreground shrink-0" />
-                )}
+                {selectedIds.size > 0
+                  ? <CheckSquare2 className="w-4 h-4 text-primary shrink-0" />
+                  : <Square className="w-4 h-4 text-muted-foreground shrink-0" />}
                 <span className="text-sm font-medium">
-                  {selectedIds.size === 0
-                    ? "No songs selected"
-                    : `${selectedIds.size} song${selectedIds.size === 1 ? "" : "s"} selected`}
+                  {selectedIds.size === 0 ? "No songs selected" : `${selectedIds.size} song${selectedIds.size === 1 ? "" : "s"} selected`}
                 </span>
               </div>
-
-              <p className="text-xs text-muted-foreground -mt-2">
-                Check a field to apply it. Unchecked fields are left unchanged.
-              </p>
-
+              <p className="text-xs text-muted-foreground -mt-2">Check a field to apply it. Unchecked fields are left unchanged.</p>
               <Separator />
-
-              {/* Fields */}
               <div className="space-y-3">
                 {FIELDS.map(({ key, label, placeholder }) => (
                   <div key={key} className="flex items-center gap-3">
-                    <Checkbox
-                      id={`field-${key}`}
-                      checked={enabled[key]}
-                      onCheckedChange={(c) => setEn(key, !!c)}
-                    />
-                    <label
-                      htmlFor={`field-${key}`}
-                      className="text-sm w-14 shrink-0 cursor-pointer select-none text-muted-foreground"
-                    >
-                      {label}
-                    </label>
+                    <Checkbox id={`field-${key}`} checked={enabled[key]} onCheckedChange={(c) => setEn(key, !!c)} />
+                    <label htmlFor={`field-${key}`} className="text-sm w-14 shrink-0 cursor-pointer select-none text-muted-foreground">{label}</label>
                     <Input
                       className="flex-1 h-8 text-sm"
                       placeholder={placeholder}
                       value={values[key]}
                       disabled={!enabled[key]}
-                      onChange={(e) => {
-                        setVal(key, e.target.value);
-                        if (!enabled[key]) setEn(key, true);
-                      }}
+                      onChange={(e) => { setVal(key, e.target.value); if (!enabled[key]) setEn(key, true); }}
                       onFocus={() => setEn(key, true)}
                     />
                   </div>
                 ))}
               </div>
-
               <Separator />
-
-              {/* Write-to-files toggle */}
               {hasElectron && (
                 <div className="flex items-start gap-3">
-                  <Checkbox
-                    id="write-files"
-                    checked={writeFiles}
-                    onCheckedChange={(c) => setWriteFiles(!!c)}
-                    className="mt-0.5"
-                  />
+                  <Checkbox id="write-files" checked={writeFiles} onCheckedChange={(c) => setWriteFiles(!!c)} className="mt-0.5" />
                   <div>
-                    <label
-                      htmlFor="write-files"
-                      className="text-sm font-medium cursor-pointer select-none flex items-center gap-1.5"
-                    >
+                    <label htmlFor="write-files" className="text-sm font-medium cursor-pointer select-none flex items-center gap-1.5">
                       <FolderOutput className="w-3.5 h-3.5 text-muted-foreground" />
                       Also write ID3 tags to files
                     </label>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Saves modified MP3 files to a folder you choose.
-                      Non-MP3 formats are metadata-only.
+                      Saves modified MP3 files to a folder you choose. Non-MP3 formats are metadata-only.
                     </p>
                   </div>
                 </div>
               )}
             </div>
-
-            {/* ── Bottom: progress + button ─────────────────────────────────── */}
             <div className="px-6 py-4 border-t border-border space-y-3 bg-muted/10">
               {phase === "saving" && (
                 <div className="space-y-1.5">
                   <Progress value={progress} className="h-1.5" />
-                  <p className="text-xs text-muted-foreground text-right tabular-nums">
-                    {progress}%
-                  </p>
+                  <p className="text-xs text-muted-foreground text-right tabular-nums">{progress}%</p>
                 </div>
               )}
-
               {phase === "done" && result && (
                 <div className="flex items-center gap-2 text-xs">
                   <HardDrive className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-emerald-400 font-medium">
-                    {result.saved} updated
-                  </span>
-                  {result.written > 0 && (
-                    <span className="text-muted-foreground">
-                      · {result.written} written to disk
-                    </span>
-                  )}
-                  {result.failed > 0 && (
-                    <span className="text-destructive">
-                      · {result.failed} failed
-                    </span>
-                  )}
+                  <span className="text-emerald-400 font-medium">{result.saved} updated</span>
+                  {result.written > 0 && <span className="text-muted-foreground">· {result.written} written to disk</span>}
+                  {result.failed > 0 && <span className="text-destructive">· {result.failed} failed</span>}
                   {result.errors.length > 0 && (
-                    <span
-                      title={result.errors.join("\n")}
-                      className="underline decoration-dotted cursor-help text-muted-foreground"
-                    >
-                      (details)
-                    </span>
+                    <span title={result.errors.join("\n")} className="underline decoration-dotted cursor-help text-muted-foreground">(details)</span>
                   )}
                 </div>
               )}
-
               <div className="flex gap-2 justify-end">
-                {phase === "done" && (
-                  <Button variant="ghost" size="sm" onClick={reset}>
-                    Edit more
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  onClick={handleApply}
-                  disabled={!canApply}
-                  className="min-w-36"
-                >
-                  {phase === "saving"
-                    ? "Saving…"
-                    : phase === "done"
-                    ? "Done"
+                {phase === "done" && <Button variant="ghost" size="sm" onClick={reset}>Edit more</Button>}
+                <Button size="sm" onClick={handleApply} disabled={!canApply} className="min-w-36">
+                  {phase === "saving" ? "Saving…" : phase === "done" ? "Done"
                     : `Apply to ${selectedIds.size || "Selected"} Song${selectedIds.size === 1 ? "" : "s"}`}
                 </Button>
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </DialogContent>
     </Dialog>
   );

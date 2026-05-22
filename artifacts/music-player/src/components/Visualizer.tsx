@@ -49,6 +49,12 @@ export function Visualizer({ visible }: VisualizerProps) {
     let rafId: number;
     let resumeThrottle = 0; // throttle AudioContext.resume() calls
 
+    // Cache the --primary CSS variable; re-read at most once per second so
+    // theme changes are picked up quickly without hitting getComputedStyle
+    // on every animation frame.
+    let cachedHsl = "";
+    let lastHslRead = -Infinity;
+
     const draw = (now: number) => {
       rafId = requestAnimationFrame(draw);
 
@@ -66,8 +72,26 @@ export function Visualizer({ visible }: VisualizerProps) {
 
       ctx.clearRect(0, 0, w, h);
 
+      // Clip all drawing to a rounded-rect matching rounded-2xl (1 rem = 16 CSS px).
+      // CSS overflow/clip-path is unreliable for GPU-composited canvas on Android
+      // WebView — enforcing the clip inside the 2D context is the only reliable fix.
+      const r = Math.min(Math.round(16 * dpr), w / 2, h / 2);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(w - r, 0);
+      ctx.arcTo(w, 0, w, r, r);
+      ctx.lineTo(w, h - r);
+      ctx.arcTo(w, h, w - r, h, r);
+      ctx.lineTo(r, h);
+      ctx.arcTo(0, h, 0, h - r, r);
+      ctx.lineTo(0, r);
+      ctx.arcTo(0, 0, r, 0, r);
+      ctx.closePath();
+      ctx.clip();
+
       const analyser = analyserRef.current;
-      if (!analyser || !isPlayingRef.current) return;
+      if (!analyser || !isPlayingRef.current) { ctx.restore(); return; }
 
       // Safety: resume AudioContext if the browser suspended it (≤ once / 2 s)
       if (now - resumeThrottle > 2000) {
@@ -92,11 +116,20 @@ export function Visualizer({ visible }: VisualizerProps) {
       const gapPx = Math.max(2, Math.round(2 * dpr));
       const barW  = Math.max(1, Math.floor((w - (BAR_COUNT - 1) * gapPx) / BAR_COUNT));
 
-      // Orange gradient — alpha ~0.70 so album art shows through clearly
+      // Read the app's --primary CSS variable (throttled to once / second).
+      // Stored as bare HSL channels, e.g. "24.6 95% 53.1%", so we wrap with
+      // hsl(… / alpha) to produce theme-aware bar colors.
+      if (now - lastHslRead > 1000) {
+        cachedHsl = getComputedStyle(document.documentElement)
+          .getPropertyValue("--primary").trim();
+        lastHslRead = now;
+      }
+      const hsl = cachedHsl || "24.6 95% 53.1%"; // orange fallback
+
       const grad = ctx.createLinearGradient(0, h, 0, 0);
-      grad.addColorStop(0,    "rgba(249,115,22,0.82)");
-      grad.addColorStop(0.55, "rgba(251,146,60,0.60)");
-      grad.addColorStop(1,    "rgba(254,215,170,0.30)");
+      grad.addColorStop(0,    `hsl(${hsl} / 0.85)`);
+      grad.addColorStop(0.55, `hsl(${hsl} / 0.55)`);
+      grad.addColorStop(1,    `hsl(${hsl} / 0.22)`);
       ctx.fillStyle = grad;
 
       for (let i = 0; i < BAR_COUNT; i++) {
@@ -106,6 +139,8 @@ export function Visualizer({ visible }: VisualizerProps) {
         const bh   = Math.max(4, Math.round(norm * h));
         ctx.fillRect(i * (barW + gapPx), h - bh, barW, bh);
       }
+
+      ctx.restore();
     };
 
     rafId = requestAnimationFrame(draw);
@@ -115,12 +150,21 @@ export function Visualizer({ visible }: VisualizerProps) {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none rounded-2xl"
+      className="pointer-events-none"
       style={{
-        display:    cssDisplay,
-        opacity:    visible ? 1 : 0,
-        transition: `opacity ${FADE_MS}ms ease`,
-        zIndex: 2,          // ON TOP of album art (z:1) so bars are visible
+        position:     "absolute",
+        top:          0,
+        right:        0,
+        bottom:       0,
+        left:         0,
+        width:        "100%",
+        height:       "100%",
+        display:      cssDisplay,
+        opacity:      visible ? 1 : 0,
+        transition:   `opacity ${FADE_MS}ms ease`,
+        zIndex:       2,
+        borderRadius: "inherit",
+        overflow:     "hidden",
       }}
     />
   );

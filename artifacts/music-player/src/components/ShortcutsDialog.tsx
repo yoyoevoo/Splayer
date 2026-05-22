@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { platformAPI } from "@/lib/platform-api";
 import {
   Dialog,
   DialogContent,
@@ -102,7 +103,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
   const [recording,  setRecording]  = useState<string | null>(null);
   const [conflict,   setConflict]   = useState<string | null>(null);
 
-  const api = window.electronAPI;
+  const api = platformAPI;
 
   function applyBindings(next: Record<string, string>) {
     setBindings(next);

@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  FileMusic,
-  FolderOpen,
-  HelpCircle,
-  Maximize2,
-  Minimize2,
-  Music,
-  Palette,
-  Settings,
-  Upload,
-  Youtube,
-} from "lucide-react";
+import { platformAPI, currentPlatform } from "@/lib/platform-api";
+import { ChevronLeft, ChevronRight, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,21 +9,56 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePlayer } from "@/lib/player-context";
+import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 import { NowPlaying } from "@/components/NowPlaying";
 import { Playlist } from "@/components/Playlist";
 import { PlayerControls } from "@/components/PlayerControls";
 import { ShortcutsDialog } from "@/components/ShortcutsDialog";
 import { AppearanceDialog } from "@/components/AppearanceDialog";
-import { MiniPlayer } from "@/components/MiniPlayer";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { YoutubeDownloadDialog } from "@/components/YoutubeDownloadDialog";
 import { SpotifyPlaylistDialog } from "@/components/SpotifyPlaylistDialog";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { DownloadQueueButton } from "@/components/DownloadQueuePanel";
+
+
+function useWindowHeight() {
+  const [height, setHeight] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const update = () => {
+      const h = window.innerHeight;
+      setHeight(h);
+    };
+    window.addEventListener("resize", update);
+    const t1 = setTimeout(update, 300);
+    const t2 = setTimeout(update, 800);
+    return () => { window.removeEventListener("resize", update); clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+  // The -18 corrects KDE Linux frameless-window sizing only — not needed on Windows/macOS/Android.
+  const isLinux = currentPlatform === "electron" && platformAPI?.platform === "linux";
+  return (currentPlatform === "android" || !isLinux) ? height : height - 18;
+}
 
 export default function Player() {
+  const winHeight = useWindowHeight();
+  // Tell the browser the real usable height so Radix UI menus position correctly
+  useEffect(() => {
+    document.documentElement.style.setProperty("--app-height", winHeight + "px");
+    document.documentElement.style.height = winHeight + "px";
+    document.body.style.height = winHeight + "px";
+    document.body.style.overflow = "hidden";
+  }, [winHeight]);
+  useEffect(() => {
+    // Force layout recalculation on mount (fixes KDE sizing on first open)
+    const t = setTimeout(() => window.dispatchEvent(new Event("resize")), 300);
+    return () => clearTimeout(t);
+  }, []);
+
+
   const {
     tracks,
     addFiles,
@@ -50,9 +74,25 @@ export default function Player() {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [settingsOpen,   setSettingsOpen]   = useState(false);
   const [ytOpen,        setYtOpen]        = useState(false);
-  const [spotifyOpen,   setSpotifyOpen]   = useState(false);
-  const [miniMode,      setMiniMode]      = useState(true);
+  const [spotifyOpen,      setSpotifyOpen]      = useState(false);
+  const [spotifyBgInfo,    setSpotifyBgInfo]    = useState<{ done: number; total: number } | null>(null);
+  const [miniMode,         setMiniMode]         = useState(true);
   const [dragOver,      setDragOver]      = useState(false);
+
+  // Sidebar show/hide — persisted across sessions
+  const [sidebarOpen,    setSidebarOpen]    = useState(
+    () => localStorage.getItem("sidebar-open") !== "false",
+  );
+  const [hoverNearEdge,  setHoverNearEdge]  = useState(false);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen((o) => {
+      const next = !o;
+      localStorage.setItem("sidebar-open", next ? "true" : "false");
+      return next;
+    });
+  }, []);
+  const { wallpaper, wallpaperBlur, wallpaperOpacity } = useTheme();
   const dragCounter = useRef(0);
   const fileRef     = useRef<HTMLInputElement>(null);
   const folderRef   = useRef<HTMLInputElement>(null);
@@ -113,7 +153,7 @@ export default function Player() {
       else if (e.key === "s" || e.key === "S") { toggleShuffle(); }
       else if (e.key === "r" || e.key === "R") { cycleRepeat(); }
       else if (e.key === "?")                  { setShortcutsOpen((o) => !o); }
-      else if (e.key === "p" || e.key === "P") { setMiniMode((o) => !o); }
+      else if ((e.key === "p" || e.key === "P") && !isAndroid) { setMiniMode((o) => !o); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -126,147 +166,232 @@ export default function Player() {
 
   const hasTracks = tracks.length > 0;
 
-  const isWin32 = window.electronAPI?.platform === "win32";
+  // In mini-mode the sidebar must stay open so the "Full Player" nav button is
+  // always accessible. Collapsing is only allowed in full-player (NowPlaying) mode.
+  const effectiveSidebarOpen = sidebarOpen || miniMode;
+
+  const isWin32 = typeof window !== 'undefined' && platformAPI?.platform === "win32";
+  const isAndroid = currentPlatform === "android";
+  // TitleBar now renders on all non-Android Electron platforms (frame:false everywhere).
+  const hasCustomTitleBar = !isAndroid && !!platformAPI;
 
   return (
-    <div className={`h-screen w-full flex flex-col bg-background text-foreground overflow-hidden${isWin32 ? " pt-9" : ""}`}>
+    <div data-debug="player-root" className={cn(
+      "w-full flex flex-col text-foreground overflow-hidden relative",
+      // On desktop with a wallpaper active, keep the root transparent so the
+      // wallpaper fills the backdrop and backdrop-filter elements show it cleanly.
+      // On Android or when no wallpaper is set, keep the solid bg-background.
+      (!wallpaper || isAndroid) && "bg-background",
+    )} style={{
+      height: winHeight + "px",
+      paddingTop: isAndroid ? "env(safe-area-inset-top, 0px)" : undefined,
+    }}>
+      {/* Spacer for Electron TitleBar — Android only (desktop rows sit flush at top) */}
+      {false && !isAndroid && <div className="h-9 w-full shrink-0" />}
+      {wallpaper && (
+        <div data-debug="wallpaper" className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          <img
+            src={wallpaper}
+            alt=""
+            className="w-full h-full object-cover"
+            style={{ filter: `blur(${wallpaperBlur}px)`, opacity: wallpaperOpacity, transform: "scale(1.05)" }}
+          />
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-5 py-3 border-b border-card-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-md flex items-center justify-center bg-primary/15 text-primary">
-            <Music className="w-4 h-4" strokeWidth={2} />
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-serif tracking-tight">Splayer</div>
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
-              Local listening room
+      {isAndroid ? (
+        /* Android: single header row, unchanged */
+        <header className={cn(
+          "relative z-[1] flex items-center justify-between px-5 py-3 border-b border-card-border",
+        )}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md flex items-center justify-center bg-primary/15 text-primary">
+              <Music className="w-4 h-4" strokeWidth={2} />
+            </div>
+            <div className="leading-tight">
+              <div className="text-sm font-serif tracking-tight">Splayer</div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                Local listening room
+              </div>
             </div>
           </div>
-        </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setYtOpen(true)}
+              className="h-8 w-8 text-red-500"
+              aria-label="Download from YouTube"
+              title="Download from YouTube"
+            >
+              <Youtube className="w-4 h-4" />
+            </Button>
+            <DownloadQueueButton />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setAppearanceOpen(true)}
+              className="h-8 w-8 text-muted-foreground"
+              aria-label="Appearance"
+              title="Appearance"
+            >
+              <Palette className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setSettingsOpen(true)}
+              className="h-8 w-8 text-muted-foreground"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
+        </header>
+      ) : (
+        /* Desktop: two independent rows */
+        <>
+          {/* Row 1 — title strip */}
+          <div className="relative z-[1] flex items-center px-5 pt-3 pb-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-md flex items-center justify-center bg-primary/15 text-primary">
+                <Music className="w-4 h-4" strokeWidth={2} />
+              </div>
+              <div className="leading-tight">
+                <div className="text-sm font-serif tracking-tight">Splayer</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Local listening room
+                </div>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* Mini Player toggle */}
-          <Button
-            size="sm"
-            variant={miniMode ? "default" : "ghost"}
-            className="gap-2"
-            onClick={() => setMiniMode((m) => !m)}
-            title={miniMode ? "Return to full player (P)" : "Switch to mini player (P)"}
-            data-testid="button-mini-player"
-          >
-            {miniMode
-              ? <><Maximize2 className="w-3.5 h-3.5" /> Full Player</>
-              : <><Minimize2 className="w-3.5 h-3.5" /> Mini Player</>}
-          </Button>
+            {/* Spotify background-download badge — click to reopen the dialog */}
+            {spotifyBgInfo && !spotifyOpen && (
+              <button
+                onClick={() => setSpotifyOpen(true)}
+                title="Spotify download in progress — click to view"
+                className={cn(
+                  "ml-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium",
+                  "border transition-colors",
+                  "hover:brightness-110",
+                )}
+                style={{ background: "rgba(29,185,84,0.15)", borderColor: "rgba(29,185,84,0.35)", color: "#1DB954" }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.32a.75.75 0 0 1-1.032.25c-2.823-1.725-6.38-2.115-10.567-1.158a.75.75 0 0 1-.334-1.463c4.58-1.047 8.508-.597 11.682 1.34a.75.75 0 0 1 .251 1.031zm1.473-3.276a.937.937 0 0 1-1.288.308C14.96 12.525 11.1 12 7.2 13.062a.938.938 0 0 1-.468-1.815C11.17 10.07 15.48 10.655 18.68 12.756a.938.938 0 0 1 .309 1.288zm.126-3.408c-3.35-1.99-8.875-2.172-12.073-1.201a1.124 1.124 0 0 1-.65-2.15c3.671-1.113 9.77-.898 13.626 1.39a1.125 1.125 0 1 1-1.127 1.95l.224-.989z" />
+                </svg>
+                <ChevronRight className="w-2.5 h-2.5 -ml-0.5 opacity-60" />
+                {spotifyBgInfo.done} / {spotifyBgInfo.total}
+                <span className="opacity-70">downloading…</span>
+              </button>
+            )}
+          </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="ghost" className="gap-2" data-testid="button-header-add">
-                <Upload className="w-3.5 h-3.5" />
-                Add music
-                <ChevronDown className="w-3 h-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => fileRef.current?.click()}>
-                <FileMusic className="w-4 h-4 mr-2" />
-                Add files...
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => folderRef.current?.click()}>
-                <FolderOpen className="w-4 h-4 mr-2" />
-                Add folder...
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setYtOpen(true)}>
-                <Youtube className="w-4 h-4 mr-2 text-red-500" />
-                From YouTube...
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSpotifyOpen(true)}>
-                {/* Spotify green dot as icon */}
-                <span className="w-4 h-4 mr-2 flex items-center justify-center shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#1DB954" aria-hidden>
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.32a.75.75 0 0 1-1.032.25c-2.823-1.725-6.38-2.115-10.567-1.158a.75.75 0 0 1-.334-1.463c4.58-1.047 8.508-.597 11.682 1.34a.75.75 0 0 1 .251 1.031zm1.473-3.276a.937.937 0 0 1-1.288.308C14.96 12.525 11.1 12 7.2 13.062a.938.938 0 0 1-.468-1.815C11.17 10.07 15.48 10.655 18.68 12.756a.938.938 0 0 1 .309 1.288zm.126-3.408c-3.35-1.99-8.875-2.172-12.073-1.201a1.124 1.124 0 0 1-.65-2.15c3.671-1.113 9.77-.898 13.626 1.39a1.125 1.125 0 1 1-1.127 1.95l.224-.989z" />
-                  </svg>
-                </span>
-                From Spotify playlist...
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setAppearanceOpen(true)}
-            className="h-8 w-8 text-muted-foreground"
-            data-testid="button-appearance"
-            aria-label="Appearance"
-            title="Appearance"
-          >
-            <Palette className="w-4 h-4" />
-          </Button>
-
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setSettingsOpen(true)}
-            className="h-8 w-8 text-muted-foreground"
-            data-testid="button-settings"
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setShortcutsOpen(true)}
-            className="h-8 w-8 text-muted-foreground"
-            data-testid="button-shortcuts"
-            aria-label="Shortcuts"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+        </>
+      )}
 
       {/* ── Main content ───────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden">
-        {miniMode ? (
-          <>
-            {/* Stable flex-1 wrapper ensures HomeDashboard always owns its slot */}
-            <ErrorBoundary>
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                <HomeDashboard />
-              </div>
-            </ErrorBoundary>
-            <ErrorBoundary>
-              <Playlist />
-            </ErrorBoundary>
-          </>
-        ) : hasTracks ? (
-          <>
+      <div className="relative z-[1] flex-1 flex overflow-hidden">
+        {isAndroid ? (
+          /* Android: always full player, no sidebar toggle */
+          hasTracks ? (
             <ErrorBoundary>
               <NowPlaying />
             </ErrorBoundary>
-            <ErrorBoundary>
-              <Playlist />
-            </ErrorBoundary>
-          </>
+          ) : (
+            <EmptyState />
+          )
         ) : (
-          <EmptyState />
+          /* Desktop: primary area + collapsible sidebar */
+          <>
+            {/* Primary content — NowPlaying or HomeDashboard.
+                Hosts the hover zone and the toggle chevron button. */}
+            <div
+              className="relative flex-1 min-h-0 overflow-hidden flex flex-col"
+              onMouseMove={(e) => {
+                if (miniMode || !hasTracks) return; // hover detection only in full-player mode
+                const { right } = e.currentTarget.getBoundingClientRect();
+                setHoverNearEdge(e.clientX > right - 48);
+              }}
+              onMouseLeave={() => setHoverNearEdge(false)}
+            >
+              {miniMode ? (
+                <ErrorBoundary>
+                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <HomeDashboard />
+                  </div>
+                </ErrorBoundary>
+              ) : hasTracks ? (
+                <ErrorBoundary>
+                  <NowPlaying />
+                </ErrorBoundary>
+              ) : (
+                <EmptyState />
+              )}
+
+              {/* Toggle chevron — only in full-player mode.
+                  In mini-mode effectiveSidebarOpen forces the sidebar open so
+                  the "Full Player" navigation button stays accessible. */}
+              {!miniMode && hasTracks && (
+                <button
+                  onClick={toggleSidebar}
+                  title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+                  className={cn(
+                    "absolute right-0 top-1/2 -translate-y-1/2 z-30",
+                    "h-12 w-5 flex items-center justify-center rounded-l-lg",
+                    "bg-card/80 backdrop-blur-sm",
+                    "border border-card-border border-r-0",
+                    "text-muted-foreground hover:text-foreground hover:bg-muted/80",
+                    "transition-opacity duration-150",
+                    !sidebarOpen || hoverNearEdge
+                      ? "opacity-100"
+                      : "opacity-0 pointer-events-none",
+                  )}
+                >
+                  {sidebarOpen
+                    ? <ChevronRight className="w-3.5 h-3.5" />
+                    : <ChevronLeft  className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+
+            {/* Sidebar — slides out/in via CSS width transition (200 ms).
+                display:flex is required so the <aside> inside gets
+                align-self:stretch (= full height), which lets the inner
+                flex-1 / overflow-y-auto track list actually scroll.
+                Without flex the aside collapses to content-height and
+                overflow-y-auto has nothing to clip against. */}
+            {(miniMode || hasTracks) && (
+              <div
+                className="shrink-0 overflow-hidden flex"
+                style={{
+                  width:      effectiveSidebarOpen ? "384px" : "0px",
+                  transition: "width 200ms ease",
+                }}
+              >
+                <ErrorBoundary>
+                  <Playlist
+                    hasTracks={hasTracks}
+                    onAddFiles={() => fileRef.current?.click()}
+                    onAddFolder={() => folderRef.current?.click()}
+                    onOpenYt={() => setYtOpen(true)}
+                    onOpenAppearance={() => setAppearanceOpen(true)}
+                    onOpenSettings={() => setSettingsOpen(true)}
+                    onOpenShortcuts={() => setShortcutsOpen(true)}
+                    onOpenSpotify={() => setSpotifyOpen(true)}
+                    miniMode={miniMode}
+                    onToggleMini={() => setMiniMode((m) => !m)}
+                  />
+                </ErrorBoundary>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* ── Footer controls (always visible) ──────────────────────────── */}
       <PlayerControls />
-
-      {/* ── Floating Mini Player ───────────────────────────────────────── */}
-      <AnimatePresence>
-        {miniMode && (
-          <MiniPlayer key="mini" onExpand={() => setMiniMode(false)} />
-        )}
-      </AnimatePresence>
 
       {/* ── Drag overlay ──────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -290,7 +415,11 @@ export default function Player() {
       <AppearanceDialog open={appearanceOpen} onOpenChange={setAppearanceOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <YoutubeDownloadDialog open={ytOpen} onOpenChange={setYtOpen} />
-      <SpotifyPlaylistDialog open={spotifyOpen} onOpenChange={setSpotifyOpen} />
+      <SpotifyPlaylistDialog
+        open={spotifyOpen}
+        onOpenChange={setSpotifyOpen}
+        onBackgroundProgress={setSpotifyBgInfo}
+      />
 
       <input ref={fileRef} type="file"
         accept="audio/*,video/mp4,video/*,.mp4,.m4a,.m4v,.mov,.mkv,.webm"

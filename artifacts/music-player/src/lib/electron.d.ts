@@ -51,6 +51,29 @@ declare global {
       /** Opens an OS folder-picker. Returns the chosen path or null. */
       showFolderDialog: () => Promise<string | null>;
 
+      /** Opens an OS save-file dialog. Returns the chosen path or null. */
+      showSaveDialog: (options?: {
+        defaultName?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+      }) => Promise<string | null>;
+
+      /** Toggle the always-on-top mini player widget window. */
+      toggleMiniWidget: () => void;
+
+      /** Push current playback state to the mini widget. */
+      updateWidgetState: (state: {
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+        isPlaying: boolean;
+        duration: number;
+        position: number;
+        sentAt: number;
+      }) => void;
+
+      /** Subscribe to widget visibility changes. Returns unsubscribe fn. */
+      onMiniWidgetVisibility: (cb: (data: { visible: boolean }) => void) => () => void;
+
       /** Writes bytes to an absolute file path. */
       writeFile: (
         filePath: string,
@@ -78,11 +101,38 @@ declare global {
       /** Returns the port of the local YouTube embed proxy server. */
       getEmbedPort: () => Promise<number>;
 
+      /** Fetch raw RSS XML for a podcast feed URL. */
+      podcastFetchRss: (url: string) => Promise<{ xml: string } | { error: string }>;
+
+      /** Get the direct CDN audio URL for a YouTube video ID (for podcast playback). */
+      ytGetAudioUrl: (videoId: string) => Promise<{ url: string } | { error: string }>;
+
+      /** Fetch a YouTube playlist as podcast episodes. */
+      ytGetPlaylist: (url: string) => Promise<{
+        title: string; description: string; thumbnail: string | null;
+        entries: { id: string; title: string; duration: number | null; thumbnail: string | null; url: string }[];
+      } | { error: string }>;
+
       /** Permanently delete a file from disk. */
       deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 
+      /** Open the system file manager at the folder containing the file. */
+      showInFolder: (filePath: string) => Promise<{ success: boolean }>;
+
+      /** Returns the app's default directory paths. */
+      getAppPaths: () => Promise<{ root: string; downloads: string; backups: string }>;
+
+      findTrackPath: (filename: string, extraDirs?: string[]) => Promise<{ found: boolean; path?: string }>;
+      copyFile: (src: string, dst: string) => Promise<{ success: boolean; error?: string }>;
+
       /** Set whether closing the window minimizes to tray ("tray") or quits ("close"). */
       setCloseBehavior: (behavior: "tray" | "close") => Promise<void>;
+
+      /** Read the real OS login-item state. */
+      getLoginItemSettings: () => Promise<{ openAtLogin: boolean }>;
+
+      /** Enable or disable opening the app at login (start on boot). */
+      setLoginItemSettings: (openAtLogin: boolean) => Promise<{ success: boolean; error?: string }>;
 
       /** Register (or replace) all global keyboard shortcuts. */
       registerGlobalShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
@@ -90,15 +140,45 @@ declare global {
       /** Push playback state to the main process so the tray stays in sync. */
       updateTrayState: (state: { title: string; artist: string; isPlaying: boolean; volume: number }) => void;
 
-      /** Fetch all tracks from a Spotify playlist URL using the given credentials. */
-      spotifyFetchPlaylist: (params: {
-        playlistUrl: string;
-        clientId: string;
-        clientSecret: string;
-      }) => Promise<SpotifyPlaylistResult | { error: string }>;
+      /** Push current playback state to Discord Rich Presence. */
+      discordRpcUpdate: (state: {
+        title: string; artist: string; isPlaying: boolean;
+        duration: number; position: number;
+      }) => void;
 
-      /** Scan ~/Music, ~/Downloads, ~/Desktop and USB drives for audio files. */
-      scanLibrary: () => Promise<{ path: string; name: string; size: number }[]>;
+      /** Enable or disable Discord Rich Presence (called from settings). */
+      discordRpcSetEnabled: (enabled: boolean) => void;
+
+      /** Push current track + playback state to OS media integrations (MPRIS / SMTC). */
+      updateOsMedia: (state: {
+        title: string; artist: string; album: string;
+        isPlaying: boolean; durationSecs: number; positionSecs: number;
+        coverDataUrl: string | null;
+      }) => void;
+
+      /** Enable or disable OS media integration (MPRIS on Linux, SMTC on Windows). */
+      setOsMediaEnabled: (enabled: boolean) => void;
+
+      spotifyLogin:      () => Promise<{ success: true } | { error: string }>;
+      spotifyLogout:     () => Promise<{ success: true }>;
+      spotifyIsLoggedIn: () => Promise<{ loggedIn: boolean }>;
+      spotifyFetchPlaylist: (params: { playlistUrl: string }) => Promise<SpotifyPlaylistResult | { error: string }>;
+      spotifyFetchTrack:    (params: { trackUrl: string })    => Promise<{
+        id: string; name: string; artists: string; durationMs: number;
+        albumName: string; albumArt: string;
+      } | { error: string }>;
+
+      /** Scan the given folders (or ~/Music if omitted) for audio files. */
+      scanLibrary: (folders?: string[]) => Promise<{
+        path: string; name: string; size: number;
+        title?: string; artist?: string; album?: string; durationSecs?: number;
+      }[]>;
+
+      /** Abort the current in-progress scan. */
+      cancelScan?: () => void;
+
+      /** Subscribe to real-time scan progress events. Returns unsubscribe fn. */
+      onScanProgress?: (cb: (data: { found: number; done: boolean }) => void) => () => void;
 
       /** Read a file from disk by absolute path. */
       readFile: (filePath: string) => Promise<{ bytes: Uint8Array; name: string; size: number }>;

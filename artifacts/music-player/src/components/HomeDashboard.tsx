@@ -13,7 +13,6 @@ import {
   User,
   Zap,
 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -179,7 +178,9 @@ function TrackCard({
         <ContextMenuTrigger asChild>
           <button onClick={onClick} className="shrink-0 w-[118px] text-left group focus:outline-none">
             <div className="w-[118px] h-[118px] rounded-xl overflow-hidden mb-2 shadow-md group-hover:shadow-xl group-hover:scale-[1.03] transition-all duration-200">
-              <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+              <AlbumCover src={cover} seed={track.title + track.artist}
+                title={track.title}
+                artist={track.artist} size="xl" rounded={false} />
             </div>
             <p className="text-xs font-medium truncate text-foreground leading-tight">{track.title}</p>
             <p className="text-[11px] text-muted-foreground truncate mt-0.5">{track.artist || "Unknown"}</p>
@@ -292,7 +293,9 @@ function TopRecentRow({
               {rank}
             </span>
             <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-              <AlbumCover src={cover} seed={track.title + track.artist} size="xl" rounded={false} />
+              <AlbumCover src={cover} seed={track.title + track.artist}
+                title={track.title}
+                artist={track.artist} size="xl" rounded={false} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
@@ -366,8 +369,8 @@ function AlbumDetailView({
 
   return (
     <>
-    <ScrollArea className="flex-1 w-full">
-      <div className="px-6 py-5 max-w-5xl">
+    <div className="flex-1 w-full overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+      <div className="px-6 py-5 w-full">
         {/* Back */}
         <button
           onClick={onBack}
@@ -412,7 +415,9 @@ function AlbumDetailView({
                     {i + 1}
                   </span>
                   <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
+                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist}
+                title={t.title}
+                artist={t.artist} size="xl" rounded={false} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
@@ -454,7 +459,7 @@ function AlbumDetailView({
           ))}
         </div>
       </div>
-    </ScrollArea>
+    </div>
     <NewPlaylistDialog
       open={newPlaylistFor !== null}
       onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
@@ -490,8 +495,8 @@ function ArtistDetailView({
 
   return (
     <>
-    <ScrollArea className="flex-1 w-full">
-      <div className="px-6 py-5 max-w-5xl">
+    <div className="flex-1 w-full overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+      <div className="px-6 py-5 w-full">
         {/* Back */}
         <button
           onClick={onBack}
@@ -532,7 +537,9 @@ function ArtistDetailView({
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-left group focus:outline-none"
                 >
                   <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 shadow-sm">
-                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist} size="xl" rounded={false} />
+                    <AlbumCover src={trackCoverUrl(t)} seed={t.title + t.artist}
+                title={t.title}
+                artist={t.artist} size="xl" rounded={false} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm truncate text-foreground group-hover:text-primary transition-colors">
@@ -574,7 +581,7 @@ function ArtistDetailView({
           ))}
         </div>
       </div>
-    </ScrollArea>
+    </div>
     <NewPlaylistDialog
       open={newPlaylistFor !== null}
       onOpenChange={(o) => { if (!o) setNewPlaylistFor(null); }}
@@ -768,8 +775,9 @@ export function HomeDashboard() {
   // ── dashboard ────────────────────────────────────────────────────────────────
 
   return (
-    <ScrollArea className="flex-1 w-full">
-      <div className="px-6 py-5 space-y-8 max-w-5xl">
+    <div className="flex-1 w-full flex flex-col min-h-0">
+      <div className="flex-1 w-full overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+      <div className="flex flex-col gap-8 px-6 py-5 w-full">
 
         {/* ── MIXES ──────────────────────────────────────────────────────── */}
         {mixes.length > 0 && (
@@ -892,12 +900,13 @@ export function HomeDashboard() {
         )}
 
       </div>
+      </div>
       <DeleteTrackDialog
         track={deleteTarget}
         open={!!deleteTarget}
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
       />
-    </ScrollArea>
+    </div>
   );
 }

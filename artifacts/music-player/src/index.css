@@ -251,3 +251,119 @@
     inset: -1px;
   }
 }
+
+/* ── High contrast mode ──────────────────────────────────────────────────── */
+
+/* Dark: push everything toward pure white text on dark panels */
+.high-contrast.dark {
+  --foreground:           0 0% 100%;
+  --card-foreground:      0 0% 100%;
+  --sidebar-foreground:   0 0% 100%;
+  --popover-foreground:   0 0% 100%;
+  --secondary-foreground: 0 0% 100%;
+  --accent-foreground:    0 0% 100%;
+  --muted-foreground:     0 0% 90%;
+
+  --border:         0 0% 60%;
+  --card-border:    0 0% 58%;
+  --sidebar-border: 0 0% 58%;
+  --popover-border: 0 0% 58%;
+  --input:          0 0% 22%;
+
+  /* Cards / panels distinctly lighter than the background */
+  --card:    240 10% 14%;
+  --sidebar: 240 10% 12%;
+  --popover: 240 10% 12%;
+  --muted:   240 10% 20%;
+  --secondary: 240 10% 20%;
+  --accent:  240 10% 22%;
+}
+
+/* Light: push everything toward pure black text on bright panels */
+.high-contrast:not(.dark) {
+  --foreground:           0 0% 0%;
+  --card-foreground:      0 0% 0%;
+  --sidebar-foreground:   0 0% 0%;
+  --popover-foreground:   0 0% 0%;
+  --secondary-foreground: 0 0% 0%;
+  --accent-foreground:    0 0% 0%;
+  --muted-foreground:     0 0% 8%;
+
+  --border:         0 0% 18%;
+  --card-border:    0 0% 16%;
+  --sidebar-border: 0 0% 16%;
+  --popover-border: 0 0% 16%;
+  --input:          0 0% 80%;
+
+  /* Cards pure white; background slightly grey to contrast */
+  --background: 0 0% 83%;
+  --card:    0 0% 100%;
+  --sidebar: 0 0% 97%;
+  --popover: 0 0% 100%;
+  --muted:   0 0% 88%;
+  --secondary: 0 0% 88%;
+  --accent:  0 0% 90%;
+}
+
+/* Interactive elements — visible outline ring on all buttons/inputs */
+.high-contrast.dark button,
+.high-contrast.dark [role="button"],
+.high-contrast.dark input:not([type="range"]):not([type="color"]):not([type="file"]),
+.high-contrast.dark select,
+.high-contrast.dark textarea {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.45) !important;
+}
+.high-contrast:not(.dark) button,
+.high-contrast:not(.dark) [role="button"],
+.high-contrast:not(.dark) input:not([type="range"]):not([type="color"]):not([type="file"]),
+.high-contrast:not(.dark) select,
+.high-contrast:not(.dark) textarea {
+  box-shadow: 0 0 0 1.5px rgba(0,0,0,0.50) !important;
+}
+
+/* Structural borders — 2 px on sidebar, header, dialog panels */
+.high-contrast aside,
+.high-contrast header,
+.high-contrast [role="dialog"] > div {
+  border-width: 2px !important;
+}
+
+/* Track / list rows — visible separator between adjacent li items */
+.high-contrast.dark aside li + li {
+  border-top: 1px solid rgba(255,255,255,0.13) !important;
+}
+.high-contrast:not(.dark) aside li + li {
+  border-top: 1px solid rgba(0,0,0,0.16) !important;
+}
+
+/* Active / selected track — much brighter highlight */
+.high-contrast .bg-accent {
+  background-color: hsl(var(--primary) / 0.28) !important;
+}
+.high-contrast [class*="bg-primary\/10"] {
+  background-color: hsl(var(--primary) / 0.30) !important;
+}
+.high-contrast [class*="ring-primary"] {
+  --tw-ring-opacity: 0.85 !important;
+}
+
+/* ── Reduce motion ───────────────────────────────────────────────────────── */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ── Like/heart animation ─────────────────────────────────────────────────── */
+@keyframes heartBeat {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.3); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+.heart-beat {
+  animation: heartBeat 0.28s ease-in-out;
+}

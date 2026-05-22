@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { platformAPI } from "@/lib/platform-api";
 import {
   ChevronLeft,
   Download,
   Loader2,
   Music2,
   Search,
+  Video,
   X,
   Youtube,
+  ListMusic,
 } from "lucide-react";
 import {
   Dialog,
@@ -14,38 +17,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePlayer } from "@/lib/player-context";
-import { addDownloadRecord } from "@/lib/downloads-history";
 import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Mode        = "search" | "url";
+type Mode        = "search" | "playlist" | "url";
 type PreviewMode = "audio" | "video";
-type DownloadType = "audio" | "video" | "merged";
-type Stage =
-  | "idle"
-  | "searching"
-  | "results"
-  | "fetching"
-  | "ready"
-  | "downloading"
-  | "done"
-  | "error";
-
-interface VideoInfo {
-  title:        string;
-  author:       string;
-  durationSecs: number;
-  thumbnailUrl: string | null;
-}
+type Stage       = "idle" | "searching" | "results" | "error";
+type PlStage     = "idle" | "fetching" | "preview";
 
 interface SearchResult {
   videoId:      string;
@@ -57,135 +39,45 @@ interface SearchResult {
   thumbnail:    string;
 }
 
-interface VideoQuality {
-  height:      number;
-  label:       string;
-  formatId:    string | null;
-  fileSizeMB:  number | null;
-  available:   boolean;
-  recommended: boolean;
+interface PendingDownload {
+  url:          string;
+  title:        string;
+  author:       string;
+  thumbnailUrl: string | null;
 }
 
-interface QualityPickerTarget {
-  videoUrl: string;
-  videoId:  string;
-  info:     VideoInfo;
+interface PlaylistEntry {
+  id:        string;
+  title:     string;
+  duration:  number | null;
+  thumbnail: string | null;
+  url:       string;
+  selected:  boolean;
 }
+
+const VIDEO_QUALITIES = [
+  { label: "1080p", formatId: "1080", recommended: false },
+  { label: "720p",  formatId: "720",  recommended: true  },
+  { label: "480p",  formatId: "480",  recommended: false },
+  { label: "360p",  formatId: "360",  recommended: false },
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 function isYoutubeUrl(url: string): boolean {
-  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url.trim());
+  return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\/.+/.test(url.trim());
 }
 
-function sanitizeFilename(name: string): string {
-  return name
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
+function isPlaylistUrl(url: string): boolean {
+  return /[?&]list=[A-Za-z0-9_-]+/.test(url) ||
+         /youtube\.com\/playlist\b/.test(url) ||
+         /music\.youtube\.com\//.test(url);
 }
 
-// ── Progress bar sub-component ───────────────────────────────────────────────
-
-function ProgressBar({
-  label,
-  percent,
-  done,
-  error,
-}: {
-  label: string;
-  percent: number;
-  done: boolean;
-  error: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          {done ? (
-            <span className="text-green-500">✓</span>
-          ) : error ? (
-            <span className="text-destructive">✗</span>
-          ) : null}
-          {label}
-        </span>
-        <span>{error ? "Failed" : done ? "Done" : `${percent}%`}</span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all duration-300",
-            error ? "bg-destructive" : done ? "bg-green-500" : "bg-primary",
-          )}
-          style={{ width: `${error ? 100 : percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── Download button — uses Radix Popover so it nests correctly inside Dialog ──
-
-const MENU_OPTIONS: { type: DownloadType; icon: string; label: string }[] = [
-  { type: "audio",  icon: "🎵", label: "Audio only (MP3)"       },
-  { type: "merged", icon: "🎬", label: "Video + Audio (MP4)"    },
-];
-
-function DownloadButton({
-  id,
-  onPick,
-  downloadingId,
-}: {
-  id:            string;
-  onPick:        (t: DownloadType) => void;
-  downloadingId: string | null;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="shrink-0">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            size="sm"
-            variant={open ? "default" : "outline"}
-            className="gap-1.5 text-xs"
-            disabled={downloadingId === id}
-          >
-            <Download className="h-3 w-3" />
-            Download
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="end"
-          className="w-44 p-1"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          {MENU_OPTIONS.map(({ type, icon, label }) => (
-            <button
-              key={type}
-              onClick={() => { setOpen(false); onPick(type); }}
-              className={cn(
-                "w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-xs font-medium",
-                "text-foreground hover:bg-primary/15 hover:text-primary transition-colors",
-              )}
-            >
-              <span className="text-sm">{icon}</span>
-              {label}
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
+function fmtDuration(secs: number | null): string {
+  if (!secs) return "";
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return `${m}:${String(Math.round(s)).padStart(2, "0")}`;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -196,101 +88,66 @@ interface Props {
 }
 
 export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
-  const { addFiles, updateTrackInfo } = usePlayer();
+  const { startDownload } = usePlayer();
 
   const [mode,        setMode]        = useState<Mode>("search");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("audio");
   const [stage,       setStage]       = useState<Stage>("idle");
 
-  // Search-mode state
   const [query,         setQuery]         = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewId,     setPreviewId]     = useState<string | null>(null);
 
-  // URL-mode state
-  const [url,     setUrl]     = useState("");
-  const [urlInfo, setUrlInfo] = useState<VideoInfo | null>(null);
+  const [url,             setUrl]             = useState("");
+  const [errorMsg,        setErrorMsg]        = useState("");
+  const [pendingDownload, setPendingDownload] = useState<PendingDownload | null>(null);
+  const [awaitingQuality, setAwaitingQuality] = useState(false);
 
-  // Shared download state
-  const [downloadInfo,   setDownloadInfo]   = useState<VideoInfo | null>(null);
-  const [dlType,         setDlType]         = useState<DownloadType>("merged");
-  const [progressAudio,  setProgressAudio]  = useState(0);
-  const [progressVideo,  setProgressVideo]  = useState(0);
-  const [progressMerge,  setProgressMerge]  = useState(0);
-  const [audioDone,      setAudioDone]      = useState(false);
-  const [videoDone,      setVideoDone]      = useState(false);
-  const [mergeDone,      setMergeDone]      = useState(false);
-  const [audioError,     setAudioError]     = useState(false);
-  const [videoError,     setVideoError]     = useState(false);
-  const [mergeError,     setMergeError]     = useState(false);
-  const [errorMsg,       setErrorMsg]       = useState("");
+  // Playlist mode state
+  const [plUrl,     setPlUrl]     = useState("");
+  const [plStage,   setPlStage]   = useState<PlStage>("idle");
+  const [plError,   setPlError]   = useState("");
+  const [plTitle,   setPlTitle]   = useState("");
+  const [plChannel, setPlChannel] = useState("");
+  const [plEntries, setPlEntries] = useState<PlaylistEntry[]>([]);
 
-  // Port of the local embed proxy server
   const [embedPort, setEmbedPort] = useState(0);
+  const api = platformAPI;
 
-  // Quality picker state
-  const [qualityPickerFor,  setQualityPickerFor]  = useState<QualityPickerTarget | null>(null);
-  const [qualities,         setQualities]         = useState<VideoQuality[]>([]);
-  const [qualitiesLoading,  setQualitiesLoading]  = useState(false);
-  const [qualitiesError,    setQualitiesError]    = useState("");
-
-  const cleanupAudioRef = useRef<(() => void) | null>(null);
-  const cleanupVideoRef = useRef<(() => void) | null>(null);
-  const cleanupMergeRef = useRef<(() => void) | null>(null);
-  const api             = window.electronAPI;
-
-  // Fetch embed server port once
   useEffect(() => {
     if (open && api?.getEmbedPort && embedPort === 0) {
       api.getEmbedPort().then(setEmbedPort);
     }
   }, [open, api, embedPort]);
 
-  // Reset when dialog closes
   useEffect(() => {
     if (!open) {
       setMode("search");
       setStage("idle");
       setQuery("");
       setSearchResults([]);
-      setDownloadingId(null);
       setPreviewId(null);
       setPreviewMode("audio");
       setUrl("");
-      setUrlInfo(null);
-      setDownloadInfo(null);
-      setDlType("merged");
-      setProgressAudio(0);
-      setProgressVideo(0);
-      setProgressMerge(0);
-      setAudioDone(false);
-      setVideoDone(false);
-      setMergeDone(false);
-      setAudioError(false);
-      setVideoError(false);
-      setMergeError(false);
       setErrorMsg("");
-      cleanupAudioRef.current?.();
-      cleanupAudioRef.current = null;
-      cleanupVideoRef.current?.();
-      cleanupVideoRef.current = null;
-      cleanupMergeRef.current?.();
-      cleanupMergeRef.current = null;
-      setQualityPickerFor(null);
-      setQualities([]);
-      setQualitiesLoading(false);
-      setQualitiesError("");
+      setPendingDownload(null);
+      setAwaitingQuality(false);
+      setPlUrl("");
+      setPlStage("idle");
+      setPlError("");
+      setPlTitle("");
+      setPlChannel("");
+      setPlEntries([]);
     }
   }, [open]);
 
-  // ── Search handler ───────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────
+
   const handleSearch = async () => {
     if (!api?.ytSearch || !query.trim()) return;
     setStage("searching");
     setSearchResults([]);
     setErrorMsg("");
-
     const results = await api.ytSearch(query.trim());
     if ("error" in results) {
       setErrorMsg(results.error);
@@ -301,312 +158,90 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  // ── URL fetch handler ────────────────────────────────────────────────────
-  const handleFetchUrl = async () => {
-    if (!api?.ytGetInfo) return;
+  // ── Single-URL mode ───────────────────────────────────────────────────────
+
+  const openFormatPicker = (pd: PendingDownload) => {
+    setAwaitingQuality(false);
+    setPendingDownload(pd);
+  };
+
+  const confirmDownload = (type: "audio" | "merged", videoFormatId?: string | null) => {
+    if (!pendingDownload) return;
+    startDownload(pendingDownload.url, {
+      title:        pendingDownload.title,
+      author:       pendingDownload.author,
+      thumbnailUrl: pendingDownload.thumbnailUrl,
+    }, type, videoFormatId);
+    onOpenChange(false);
+  };
+
+  const handleUrlDownload = () => {
     const trimmed = url.trim();
     if (!isYoutubeUrl(trimmed)) {
       setErrorMsg("Please enter a valid YouTube URL");
-      setStage("error");
       return;
     }
-    setStage("fetching");
     setErrorMsg("");
-    setUrlInfo(null);
-
-    const result = await api.ytGetInfo(trimmed);
-    if ("error" in result) {
-      setErrorMsg(result.error);
-      setStage("error");
-    } else {
-      setUrlInfo(result);
-      setStage("ready");
-    }
+    openFormatPicker({ url: trimmed, title: trimmed, author: "", thumbnailUrl: null });
   };
 
-  // ── Core download ─────────────────────────────────────────────────────────
-  const performDownload = async (
-    videoUrl: string,
-    info: VideoInfo,
-    type: DownloadType,
-    videoFormatId?: string | null,
-  ) => {
-    setDownloadInfo(info);
-    setDlType(type);
-    setStage("downloading");
-    setProgressAudio(0);
-    setProgressVideo(0);
-    setProgressMerge(0);
-    setAudioDone(false);
-    setVideoDone(false);
-    setMergeDone(false);
-    setAudioError(false);
-    setVideoError(false);
-    setMergeError(false);
+  // ── Playlist mode ─────────────────────────────────────────────────────────
 
-    const baseName     = sanitizeFilename(info.title);
-    const downloadsDir = localStorage.getItem("settings-downloads-path") ?? "";
-    const videosDir    = localStorage.getItem("settings-videos-path")    ?? "";
+  const handlePlaylistFetch = useCallback(async () => {
+    const trimmed = plUrl.trim();
+    if (!trimmed) return;
+    setPlStage("fetching");
+    setPlError("");
 
-    // ── Merged: download audio + video then ffmpeg-merge into one MP4 ─────────
-    if (type === "merged") {
-      if (!api?.ytDownloadMerged) {
-        setMergeError(true);
-        setErrorMsg("Merged download not available.");
-        setStage("error");
-        return;
-      }
-
-      const cleanupA = api.onYtProgress(({ percent }) => setProgressAudio(percent));
-      const cleanupV = api.onYtProgressVideo
-        ? api.onYtProgressVideo(({ percent }) => setProgressVideo(percent))
-        : () => {};
-      const cleanupM = api.onYtProgressMerge
-        ? api.onYtProgressMerge(({ percent }) => setProgressMerge(percent))
-        : () => {};
-      cleanupAudioRef.current = cleanupA;
-      cleanupVideoRef.current = cleanupV;
-      cleanupMergeRef.current = cleanupM;
-
-      const result = await api.ytDownloadMerged({ url: videoUrl, videoFormatId: videoFormatId ?? null });
-
-      cleanupA(); cleanupV(); cleanupM();
-      cleanupAudioRef.current = null;
-      cleanupVideoRef.current = null;
-      cleanupMergeRef.current = null;
-
-      if ("error" in result) {
-        setAudioError(true);
-        setVideoError(true);
-        setMergeError(true);
-        setErrorMsg(result.error);
-        setDownloadingId(null);
-        setStage("error");
-        return;
-      }
-
-      setAudioDone(true);   setProgressAudio(100);
-      setVideoDone(true);   setProgressVideo(100);
-      setMergeDone(true);   setProgressMerge(100);
-
-      const mergedFilename = `${baseName}.mp4`;
-      const mergedBytes    = new Uint8Array(result.bytes);
-      const blob           = new Blob([mergedBytes], { type: "video/mp4" });
-      const file           = new File([blob], mergedFilename, { type: "video/mp4" });
-
-      // Prefer the Downloads folder; fall back to the Videos folder.
-      const saveDir = downloadsDir || videosDir;
-      if (saveDir && api?.writeFile) {
-        await api.writeFile(`${saveDir}/${mergedFilename}`, mergedBytes);
-      }
-
-      await addFiles([file]);
-
-      // Mark this track as a self-contained merged video so NowPlaying can
-      // detect it and enable the video button without needing a companion file.
-      const mergedTrackId = `${file.name}-${file.size}`;
-      try {
-        localStorage.setItem(`merged-video-trackid:${mergedTrackId}`, "1");
-        if (saveDir) {
-          localStorage.setItem(
-            `merged-video-path:${mergedTrackId}`,
-            `${saveDir}/${mergedFilename}`,
-          );
-        }
-      } catch {}
-
-      await updateTrackInfo(mergedTrackId, {
-        title:  result.title,
-        artist: result.author,
-      });
-
-      addDownloadRecord({
-        id:           `merged-${Date.now()}`,
-        trackId:      `${file.name}-${file.size}`,
-        title:        result.title,
-        artist:       result.author,
-        ext:          "mp4",
-        fileSize:     mergedBytes.byteLength,
-        filePath:     saveDir ? `${saveDir}/${mergedFilename}` : null,
-        downloadedAt: Date.now(),
-        type:         "video",
-      });
-
-      setDownloadingId(null);
-      setStage("done");
+    const result = await (api as any)?.ytGetPlaylist?.(trimmed);
+    if (!result || "error" in result) {
+      setPlError((result as any)?.error ?? "Failed to fetch playlist. Check the URL and try again.");
+      setPlStage("idle");
       return;
     }
+    setPlTitle(result.title);
+    setPlChannel(result.description?.split("\n")?.[0] ?? "");
+    setPlEntries(
+      (result.entries ?? []).map((e: any) => ({
+        id:        e.id,
+        title:     e.title || e.id,
+        duration:  e.duration ?? null,
+        thumbnail: e.thumbnail ?? null,
+        url:       e.url ?? `https://www.youtube.com/watch?v=${e.id}`,
+        selected:  true,
+      })),
+    );
+    setPlStage("preview");
+  }, [plUrl, api]);
 
-    // ── Audio-only or Video-only ───────────────────────────────────────────────
-    if (!api?.ytDownload || !api?.ytDownloadVideo) return;
+  const plSelected    = plEntries.filter((e) => e.selected);
+  const plAllSelected = plEntries.length > 0 && plEntries.every((e) => e.selected);
+  const plNoneSelected = plEntries.every((e) => !e.selected);
 
-    const doAudio = type === "audio";
-    const doVideo = type === "video";
-
-    const cleanupA = doAudio
-      ? api.onYtProgress(({ percent }) => setProgressAudio(percent))
-      : () => {};
-    const cleanupV = doVideo && api.onYtProgressVideo
-      ? api.onYtProgressVideo(({ percent }) => setProgressVideo(percent))
-      : () => {};
-    cleanupAudioRef.current = cleanupA;
-    cleanupVideoRef.current = cleanupV;
-
-    const [audioResult, videoResult] = await Promise.all([
-      doAudio ? api.ytDownload(videoUrl) : Promise.resolve(null),
-      doVideo ? api.ytDownloadVideo(videoUrl) : Promise.resolve(null),
-    ]);
-
-    cleanupA();
-    cleanupV();
-    cleanupAudioRef.current = null;
-    cleanupVideoRef.current = null;
-
-    let anySuccess = false;
-
-    if (audioResult !== null) {
-      if ("error" in audioResult) {
-        setAudioError(true);
-      } else {
-        setAudioDone(true);
-        setProgressAudio(100);
-
-        const audioFilename = `${baseName}.${audioResult.ext}`;
-        const audioBytes    = new Uint8Array(audioResult.bytes);
-        const blob          = new Blob([audioBytes], { type: audioResult.mimeType });
-        const file          = new File([blob], audioFilename, { type: audioResult.mimeType });
-
-        if (downloadsDir && api?.writeFile) {
-          await api.writeFile(`${downloadsDir}/${audioFilename}`, audioBytes);
-        }
-
-        await addFiles([file]);
-        await updateTrackInfo(file.name + "-" + file.size, {
-          title:  audioResult.title,
-          artist: audioResult.author,
-        });
-
-        addDownloadRecord({
-          id:           `audio-${Date.now()}`,
-          trackId:      `${file.name}-${file.size}`,
-          title:        audioResult.title,
-          artist:       audioResult.author,
-          ext:          audioResult.ext,
-          fileSize:     audioBytes.byteLength,
-          filePath:     downloadsDir ? `${downloadsDir}/${audioFilename}` : null,
-          downloadedAt: Date.now(),
-          type:         "audio",
-        });
-
-        anySuccess = true;
-      }
-    }
-
-    if (videoResult !== null) {
-      if ("error" in videoResult) {
-        setVideoError(true);
-      } else {
-        setVideoDone(true);
-        setProgressVideo(100);
-
-        const videoFilename = `${baseName}.mp4`;
-        const videoBytes    = new Uint8Array(videoResult.bytes);
-        const blob          = new Blob([videoBytes], { type: "video/mp4" });
-        const file          = new File([blob], videoFilename, { type: "video/mp4" });
-
-        if (videosDir && api?.writeFile) {
-          await api.writeFile(`${videosDir}/${videoFilename}`, videoBytes);
-        }
-
-        await addFiles([file]);
-        await updateTrackInfo(file.name + "-" + file.size, {
-          title:  videoResult.title,
-          artist: videoResult.author,
-        });
-
-        addDownloadRecord({
-          id:           `video-${Date.now()}`,
-          trackId:      `${file.name}-${file.size}`,
-          title:        videoResult.title,
-          artist:       videoResult.author,
-          ext:          "mp4",
-          fileSize:     videoBytes.byteLength,
-          filePath:     videosDir ? `${videosDir}/${videoFilename}` : null,
-          downloadedAt: Date.now(),
-          type:         "video",
-        });
-
-        anySuccess = true;
-      }
-    }
-
-    setDownloadingId(null);
-
-    if (anySuccess) {
-      setStage("done");
-    } else {
-      setErrorMsg("Download failed. Check your internet connection.");
-      setStage("error");
-    }
-  };
-
-  // ── Quality picker: open picker and fetch quality list ───────────────────
-  const handlePickMerged = async (
-    videoUrl: string,
-    info:     VideoInfo,
-    videoId:  string,
-  ) => {
-    setDownloadingId(videoId);
-    setQualityPickerFor({ videoUrl, videoId, info });
-    setQualities([]);
-    setQualitiesError("");
-    setQualitiesLoading(true);
-
-    if (!api?.ytGetQualities) {
-      // API not available — fall back to best quality immediately
-      setQualitiesLoading(false);
-      setQualityPickerFor(null);
-      performDownload(videoUrl, info, "merged", null);
-      return;
-    }
-
-    const result = await api.ytGetQualities(videoUrl);
-    setQualitiesLoading(false);
-
-    if ("error" in result) {
-      setQualitiesError(result.error);
-    } else {
-      setQualities(result);
-    }
-  };
-
-  // ── Quality picker: cancel ────────────────────────────────────────────────
-  const cancelQualityPicker = () => {
-    setQualityPickerFor(null);
-    setDownloadingId(null);
-    setQualities([]);
-    setQualitiesLoading(false);
-    setQualitiesError("");
-  };
-
-  // ── Derived success message ───────────────────────────────────────────────
-  function successMessage(): string {
-    if (dlType === "audio")  return "✅ Audio (MP3) downloaded";
-    if (dlType === "merged") return mergeDone ? "✅ Video + Audio MP4 saved" : "⚠️ Merge failed";
-    return "✅ Downloaded";
+  function togglePlEntry(id: string) {
+    setPlEntries((prev) => prev.map((e) => e.id === id ? { ...e, selected: !e.selected } : e));
+  }
+  function toggleAllPl(val: boolean) {
+    setPlEntries((prev) => prev.map((e) => ({ ...e, selected: val })));
   }
 
-  // ── Derived flags ────────────────────────────────────────────────────────
-  const isElectron      = !!api?.ytSearch;
-  const isDownloading   = stage === "downloading";
-  const isDone          = stage === "done";
-  const showQualityPicker = isElectron && !!qualityPickerFor && !isDownloading && !isDone;
-  const showControls    = isElectron && !isDownloading && !isDone && !showQualityPicker;
+  const handleBatchDownload = () => {
+    for (const entry of plSelected) {
+      startDownload(
+        entry.url,
+        { title: entry.title, author: plTitle, thumbnailUrl: entry.thumbnail },
+        "audio",
+      );
+    }
+    onOpenChange(false);
+  };
+
+  const isElectron = !!api?.ytSearch;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Youtube className="w-4 h-4 text-red-500" />
@@ -614,218 +249,118 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        {/* ── Not in Electron ── */}
+        {/* ── Not available outside Electron ── */}
         {!isElectron && (
           <div className="py-8 text-center space-y-3">
             <Music2 className="w-8 h-8 mx-auto text-muted-foreground opacity-30" />
-            <p className="text-sm text-muted-foreground">
-              Available only in the desktop app.
-            </p>
+            <p className="text-sm text-muted-foreground">Available only in the desktop app.</p>
           </div>
         )}
 
-        {/* ── Quality picker ── */}
-        {showQualityPicker && qualityPickerFor && (
-          <div className="space-y-3 py-1">
-
-            {/* Header */}
+        {/* ── Format picker screen ── */}
+        {isElectron && pendingDownload && !awaitingQuality && (
+          <div className="space-y-4 pt-1">
             <div className="flex items-center gap-2">
-              <button
-                onClick={cancelQualityPicker}
-                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <button onClick={() => setPendingDownload(null)}
+                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-sm font-semibold">Select Video Quality</span>
+              <span className="text-sm font-semibold">Choose format</span>
             </div>
 
-            {/* Video card */}
-            <div className="flex gap-3 rounded-lg border border-card-border bg-card px-3 py-2">
-              {qualityPickerFor.info.thumbnailUrl ? (
-                <img
-                  src={qualityPickerFor.info.thumbnailUrl}
-                  alt=""
-                  className="h-10 w-16 shrink-0 rounded object-cover"
-                />
-              ) : (
-                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded bg-muted">
-                  <Music2 className="h-4 w-4 text-muted-foreground" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1 self-center">
-                <p className="line-clamp-1 text-sm font-medium">{qualityPickerFor.info.title}</p>
-                <p className="text-xs text-muted-foreground">{qualityPickerFor.info.author}</p>
-              </div>
-            </div>
-
-            {/* Loading */}
-            {qualitiesLoading && (
-              <div className="flex items-center justify-center gap-2 py-6">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Fetching available qualities…</span>
-              </div>
-            )}
-
-            {/* Error */}
-            {qualitiesError && !qualitiesLoading && (
-              <div className="space-y-3">
-                <p className="text-xs text-destructive text-center py-2">{qualitiesError}</p>
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={cancelQualityPicker}>Cancel</Button>
+            {pendingDownload.title && pendingDownload.title !== pendingDownload.url && (
+              <div className="flex gap-3 rounded-lg border border-card-border bg-card p-3">
+                {pendingDownload.thumbnailUrl ? (
+                  <img src={pendingDownload.thumbnailUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted">
+                    <Music2 className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 self-center">
+                  <p className="line-clamp-2 text-sm font-medium leading-snug">{pendingDownload.title}</p>
+                  {pendingDownload.author && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{pendingDownload.author}</p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Quality list */}
-            {!qualitiesLoading && !qualitiesError && qualities.length > 0 && (
-              <div className="space-y-1.5">
-                {qualities.map((q) => (
-                  <button
-                    key={q.height}
-                    disabled={!q.available}
-                    onClick={() => {
-                      const target = qualityPickerFor;
-                      setQualityPickerFor(null);
-                      setQualities([]);
-                      performDownload(target.videoUrl, target.info, "merged", q.formatId);
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition-colors",
-                      q.available
-                        ? q.recommended
-                          ? "border-primary/60 bg-primary/10 hover:bg-primary/15 cursor-pointer"
-                          : "border-card-border bg-card hover:border-primary/40 hover:bg-muted/40 cursor-pointer"
-                        : "border-card-border/40 bg-card/50 opacity-40 cursor-not-allowed",
-                    )}
-                  >
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span className={cn(
-                        "text-sm font-semibold",
-                        q.recommended && q.available ? "text-primary" : "",
-                      )}>
-                        {q.label}
-                      </span>
-                      {q.recommended && q.available && (
-                        <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded font-semibold tracking-wide">
-                          BEST
-                        </span>
-                      )}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      {q.available ? (
-                        <span className="text-xs text-muted-foreground">
-                          {q.fileSizeMB ? `~${q.fileSizeMB} MB` : ""}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50">Not available</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-
-                <div className="flex justify-end pt-1">
-                  <Button variant="ghost" size="sm" onClick={cancelQualityPicker}>Cancel</Button>
+            <div className="space-y-2.5">
+              <button onClick={() => confirmDownload("audio")}
+                className="w-full flex items-center gap-4 rounded-xl border-2 border-card-border bg-card px-4 py-4 text-left hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] transition-all">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500/15 text-green-500">
+                  <Music2 className="h-5 w-5" />
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Downloading ── */}
-        {isElectron && isDownloading && downloadInfo && (
-          <div className="space-y-4 py-1">
-            <div className="flex gap-3 rounded-lg border border-card-border bg-card p-3">
-              {downloadInfo.thumbnailUrl ? (
-                <img
-                  src={downloadInfo.thumbnailUrl}
-                  alt=""
-                  className="h-14 w-20 shrink-0 rounded object-cover"
-                />
-              ) : (
-                <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded bg-muted">
-                  <Music2 className="h-5 w-5 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm">Audio Only</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">MP3 · Best quality audio</p>
                 </div>
-              )}
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="line-clamp-2 text-sm font-medium leading-snug">
-                  {downloadInfo.title}
-                </p>
-                <p className="text-xs text-muted-foreground">{downloadInfo.author}</p>
-                <p className="text-xs text-muted-foreground/60">
-                  {formatDuration(downloadInfo.durationSecs)}
-                </p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              {(dlType === "audio" || dlType === "merged") && (
-                <ProgressBar
-                  label={dlType === "merged" ? "Downloading audio stream…" : "MP3 Audio"}
-                  percent={progressAudio}
-                  done={audioDone}
-                  error={audioError}
-                />
-              )}
-              {dlType === "merged" && (
-                <ProgressBar
-                  label="Downloading video stream…"
-                  percent={progressVideo}
-                  done={videoDone}
-                  error={videoError}
-                />
-              )}
-              {dlType === "merged" && (
-                <ProgressBar
-                  label={mergeDone ? "Saved!" : "Merging into MP4…"}
-                  percent={progressMerge}
-                  done={mergeDone}
-                  error={mergeError}
-                />
-              )}
+              </button>
+              <button onClick={() => setAwaitingQuality(true)}
+                className="w-full flex items-center gap-4 rounded-xl border-2 border-card-border bg-card px-4 py-4 text-left hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] transition-all">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-blue-500">
+                  <Video className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm">Video + Audio</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">MP4 · Includes video</p>
+                </div>
+              </button>
             </div>
           </div>
         )}
 
-        {/* ── Done ── */}
-        {isElectron && isDone && (
-          <div className="py-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-green-500/15 flex items-center justify-center mx-auto">
-              <Download className="w-5 h-5 text-green-500" />
+        {/* ── Quality picker screen ── */}
+        {isElectron && pendingDownload && awaitingQuality && (
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setAwaitingQuality(false)}
+                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-semibold">Choose quality</span>
             </div>
-            <p className="text-sm font-medium">{successMessage()}</p>
-            <p className="text-xs text-muted-foreground truncate px-6">
-              {downloadInfo?.title}
-            </p>
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
+            <div className="space-y-2.5">
+              {VIDEO_QUALITIES.map((q) => (
+                <button key={q.formatId} onClick={() => confirmDownload("merged", q.formatId)}
+                  className="w-full flex items-center gap-4 rounded-xl border-2 border-card-border bg-card px-4 py-3.5 text-left hover:border-primary/60 hover:bg-primary/5 active:scale-[0.98] transition-all">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-blue-500">
+                    <Video className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm">{q.label}</p>
+                    {q.recommended && <p className="text-xs text-muted-foreground mt-0.5">Recommended</p>}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* ── Main controls ── */}
-        {showControls && (
-          <div className="space-y-3 pt-1">
-
-            {/* ── Search / URL mode toggle ── */}
+        {/* ── Main tabs ── */}
+        {isElectron && !pendingDownload && (
+          <div className="space-y-2.5 pt-0.5">
+            {/* Mode toggle */}
             <div className="flex rounded-lg border border-card-border overflow-hidden text-sm">
-              {(["search", "url"] as Mode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => {
-                    setMode(m);
-                    setStage("idle");
-                    setErrorMsg("");
-                    setSearchResults([]);
-                    setUrlInfo(null);
-                    setPreviewId(null);
-                  }}
+              {(["search", "playlist", "url"] as Mode[]).map((m) => (
+                <button key={m} onClick={() => {
+                  setMode(m);
+                  setStage("idle");
+                  setErrorMsg("");
+                  setSearchResults([]);
+                  setPreviewId(null);
+                  setPlStage("idle");
+                  setPlError("");
+                  setPlEntries([]);
+                }}
                   className={cn(
-                    "flex-1 py-1.5 font-medium transition-colors",
+                    "flex-1 py-1.5 font-medium transition-colors text-xs",
                     mode === m
                       ? "bg-primary text-primary-foreground"
                       : "bg-card text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {m === "search" ? "Search" : "Paste URL"}
+                  )}>
+                  {m === "search" ? "Search" : m === "playlist" ? "Playlist" : "URL"}
                 </button>
               ))}
             </div>
@@ -837,190 +372,92 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
                   <Input
                     placeholder="Artist, song title, or mix…"
                     value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      if (stage === "error") setStage("idle");
-                    }}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && stage !== "searching" && handleSearch()
-                    }
+                    onChange={(e) => { setQuery(e.target.value); if (stage === "error") setStage("idle"); }}
+                    onKeyDown={(e) => e.key === "Enter" && stage !== "searching" && handleSearch()}
                     disabled={stage === "searching"}
                     className="flex-1 text-sm"
                     autoFocus
                   />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSearch}
-                    disabled={!query.trim() || stage === "searching"}
-                  >
-                    {stage === "searching" ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Search className="w-3.5 h-3.5" />
-                    )}
+                  <Button variant="outline" size="sm" onClick={handleSearch}
+                    disabled={!query.trim() || stage === "searching"}>
+                    {stage === "searching" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                   </Button>
                 </div>
 
                 {stage === "error" && errorMsg && (
                   <p className="text-xs text-destructive text-center">{errorMsg}</p>
                 )}
-
                 {stage === "results" && searchResults.length === 0 && (
-                  <p className="text-center text-sm text-muted-foreground py-4">
-                    No results found.
-                  </p>
+                  <p className="text-center text-sm text-muted-foreground py-4">No results found.</p>
                 )}
 
                 {stage === "results" && searchResults.length > 0 && (
                   <div className="space-y-2">
-                    <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                    <div className="space-y-2 max-h-[50vh] sm:max-h-[280px] overflow-y-auto pb-20 sm:pb-2 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
                       {searchResults.map((r) => (
-                        <div
-                          key={r.videoId}
-                          className={cn(
-                            "flex items-center gap-3 rounded-lg border bg-card px-3 py-2 transition-colors",
-                            previewId === r.videoId
-                              ? "border-primary/60"
-                              : "border-card-border",
-                          )}
-                        >
-                          {/* Thumbnail */}
-                          {r.thumbnail ? (
-                            <img
-                              src={r.thumbnail}
-                              alt=""
-                              className="h-11 w-16 shrink-0 rounded object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-11 w-16 shrink-0 items-center justify-center rounded bg-muted">
-                              <Music2 className="h-4 w-4 text-muted-foreground" />
+                        <div key={r.videoId}
+                          className={cn("rounded-lg border bg-card p-3 transition-colors",
+                            previewId === r.videoId ? "border-primary/60" : "border-card-border")}>
+                          <div className="flex gap-3 mb-2.5">
+                            {r.thumbnail ? (
+                              <img src={r.thumbnail} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                            ) : (
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted">
+                                <Music2 className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="line-clamp-2 text-sm font-medium leading-snug">{r.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {r.channelName}{r.durationText ? ` · ${r.durationText}` : ""}
+                              </p>
                             </div>
-                          )}
-
-                          {/* Info */}
-                          <div className="min-w-0 flex-1">
-                            <p className="line-clamp-1 text-sm font-medium leading-snug">
-                              {r.title}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {r.channelName}
-                              {r.durationText ? ` · ${r.durationText}` : ""}
-                            </p>
                           </div>
-
-                          {/* Per-song preview buttons */}
-                          <div className="flex shrink-0 gap-1">
-                            {/* 🎵 Audio preview */}
-                            <button
-                              title="Preview audio"
-                              onClick={() => {
-                                if (previewId === r.videoId && previewMode === "audio") {
-                                  setPreviewId(null);
-                                } else {
-                                  setPreviewMode("audio");
-                                  setPreviewId(r.videoId);
-                                }
-                              }}
-                              className={cn(
-                                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-all",
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button title="Preview audio"
+                              onClick={() => { if (previewId === r.videoId && previewMode === "audio") { setPreviewId(null); } else { setPreviewMode("audio"); setPreviewId(r.videoId); } }}
+                              className={cn("flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
                                 previewId === r.videoId && previewMode === "audio"
                                   ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                              )}
-                            >
+                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground")}>
                               🎵
                             </button>
-
-                            {/* 🎬 Video preview */}
-                            <button
-                              title="Preview video"
-                              onClick={() => {
-                                if (previewId === r.videoId && previewMode === "video") {
-                                  setPreviewId(null);
-                                } else {
-                                  setPreviewMode("video");
-                                  setPreviewId(r.videoId);
-                                }
-                              }}
-                              className={cn(
-                                "flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition-all",
+                            <button title="Preview video"
+                              onClick={() => { if (previewId === r.videoId && previewMode === "video") { setPreviewId(null); } else { setPreviewMode("video"); setPreviewId(r.videoId); } }}
+                              className={cn("flex items-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
                                 previewId === r.videoId && previewMode === "video"
                                   ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
-                              )}
-                            >
+                                  : "border-card-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground")}>
                               🎬
                             </button>
+                            <Button size="sm" variant="outline" className="gap-1.5 text-xs"
+                              onClick={() => openFormatPicker({ url: r.url, title: r.title, author: r.channelName, thumbnailUrl: r.thumbnail || null })}>
+                              <Download className="h-3 w-3" />
+                              Download
+                            </Button>
                           </div>
-
-                          {/* Download button with popup */}
-                          <DownloadButton
-                            id={r.videoId}
-                            downloadingId={downloadingId}
-                            onPick={(type) => {
-                              const info: VideoInfo = {
-                                title:        r.title,
-                                author:       r.channelName,
-                                durationSecs: r.durationSecs,
-                                thumbnailUrl: r.thumbnail || null,
-                              };
-                              if (type === "merged") {
-                                handlePickMerged(r.url, info, r.videoId);
-                              } else {
-                                setDownloadingId(r.videoId);
-                                performDownload(r.url, info, type);
-                              }
-                            }}
-                          />
                         </div>
                       ))}
                     </div>
-
-                    {/* Inline preview panel */}
                     {previewId && (
                       <div className="rounded-lg border border-primary/40 bg-card overflow-hidden">
                         <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
-                          <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground font-medium">
                             {previewMode === "audio" ? "🎵 Audio preview" : "🎬 Video preview"}
                           </span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-                            onClick={() => setPreviewId(null)}
-                          >
-                            <X className="h-3 w-3" />
-                            Close preview
+                          <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => setPreviewId(null)}>
+                            <X className="h-3 w-3" /> Close
                           </Button>
                         </div>
-
                         {previewMode === "audio" ? (
-                          <audio
-                            key={previewId}
-                            controls
-                            autoPlay
-                            src={
-                              embedPort
-                                ? `http://127.0.0.1:${embedPort}/stream?v=${previewId}`
-                                : undefined
-                            }
-                            className="w-full px-3 py-2"
-                            style={{ display: "block" }}
-                          />
+                          <audio key={previewId} controls autoPlay
+                            src={embedPort ? `http://127.0.0.1:${embedPort}/stream?v=${previewId}` : undefined}
+                            className="w-full px-3 py-2" style={{ display: "block" }} />
                         ) : (
-                          <video
-                            key={previewId}
-                            controls
-                            autoPlay
-                            src={
-                              embedPort
-                                ? `http://127.0.0.1:${embedPort}/video-stream?v=${previewId}`
-                                : undefined
-                            }
-                            className="w-full bg-black"
-                            style={{ height: 220, display: "block" }}
-                          />
+                          <video key={previewId} controls autoPlay
+                            src={embedPort ? `http://127.0.0.1:${embedPort}/video-stream?v=${previewId}` : undefined}
+                            className="w-full bg-black aspect-video max-h-[180px] sm:max-h-[220px]" style={{ display: "block" }} />
                         )}
                       </div>
                     )}
@@ -1029,86 +466,140 @@ export function YoutubeDownloadDialog({ open, onOpenChange }: Props) {
               </div>
             )}
 
-            {/* ── URL (paste) mode ── */}
+            {/* ── Playlist / YT Music mode ── */}
+            {mode === "playlist" && (
+              <div className="space-y-3">
+                {plStage !== "preview" && (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="YouTube or YouTube Music playlist URL…"
+                        value={plUrl}
+                        onChange={(e) => { setPlUrl(e.target.value); setPlError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && plStage !== "fetching" && handlePlaylistFetch()}
+                        disabled={plStage === "fetching"}
+                        className="flex-1 text-sm"
+                        autoFocus
+                      />
+                      <Button variant="outline" size="sm"
+                        onClick={handlePlaylistFetch}
+                        disabled={!plUrl.trim() || plStage === "fetching"}>
+                        {plStage === "fetching"
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Search className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                    {plError && (
+                      <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+                        {plError}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Paste any YouTube playlist URL or YouTube Music playlist URL.
+                      Each video will be added to the download queue as audio.
+                    </p>
+                  </>
+                )}
+
+                {plStage === "preview" && plEntries.length > 0 && (
+                  <>
+                    {/* Playlist header */}
+                    <div className="flex items-center gap-3 rounded-lg border border-card-border bg-card px-3 py-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-500/15 text-red-500">
+                        <ListMusic className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate">{plTitle}</p>
+                        <p className="text-xs text-muted-foreground">{plEntries.length} videos</p>
+                      </div>
+                      <button onClick={() => { setPlStage("idle"); setPlEntries([]); setPlTitle(""); }}
+                        className="shrink-0 h-6 w-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    {/* Select all / none */}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5">
+                      <span>{plSelected.length} of {plEntries.length} selected</span>
+                      <div className="flex gap-3">
+                        <button className="hover:text-foreground" onClick={() => toggleAllPl(true)}  disabled={plAllSelected}>Select all</button>
+                        <button className="hover:text-foreground" onClick={() => toggleAllPl(false)} disabled={plNoneSelected}>Deselect all</button>
+                      </div>
+                    </div>
+
+                    {/* Entry list */}
+                    <div className="overflow-y-auto max-h-[260px] space-y-1 pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                      {plEntries.map((entry, idx) => (
+                        <div key={entry.id}
+                          onClick={() => togglePlEntry(entry.id)}
+                          className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-muted/50 cursor-pointer transition-colors">
+                          {/* Checkbox */}
+                          <div className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                            entry.selected ? "bg-primary border-primary" : "border-muted-foreground/40",
+                          )}>
+                            {entry.selected && (
+                              <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                                <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-[10px] text-muted-foreground/50 w-5 text-right font-mono">{idx + 1}</span>
+                          {entry.thumbnail ? (
+                            <img src={entry.thumbnail} alt="" className="h-7 w-12 shrink-0 rounded object-cover" />
+                          ) : (
+                            <div className="h-7 w-12 shrink-0 rounded bg-muted flex items-center justify-center">
+                              <Music2 className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          )}
+                          <p className="min-w-0 flex-1 text-xs truncate">{entry.title}</p>
+                          {entry.duration != null && (
+                            <span className="shrink-0 text-[10px] text-muted-foreground/50 font-mono">
+                              {fmtDuration(entry.duration)}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Download button */}
+                    <Button
+                      size="sm"
+                      className="w-full gap-1.5"
+                      disabled={plSelected.length === 0}
+                      onClick={handleBatchDownload}>
+                      <Download className="w-3.5 h-3.5" />
+                      Queue {plSelected.length} download{plSelected.length !== 1 ? "s" : ""}
+                    </Button>
+                    <p className="text-[11px] text-muted-foreground text-center">
+                      Downloads run in the background — watch the queue badge in the top bar.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── URL mode ── */}
             {mode === "url" && (
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <Input
                     placeholder="https://youtube.com/watch?v=..."
                     value={url}
-                    onChange={(e) => {
-                      setUrl(e.target.value);
-                      if (stage === "error" || stage === "ready") {
-                        setStage("idle");
-                        setUrlInfo(null);
-                      }
-                    }}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && stage === "idle" && handleFetchUrl()
-                    }
-                    disabled={stage === "fetching"}
+                    onChange={(e) => { setUrl(e.target.value); setErrorMsg(""); }}
+                    onKeyDown={(e) => e.key === "Enter" && handleUrlDownload()}
                     className="flex-1 text-sm"
                     autoFocus
                   />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleFetchUrl}
-                    disabled={!url.trim() || stage === "fetching"}
-                  >
-                    {stage === "fetching" ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      "Fetch"
-                    )}
+                  <Button variant="default" size="sm" onClick={handleUrlDownload} disabled={!url.trim()} className="gap-1.5">
+                    <Download className="w-3.5 h-3.5" />
+                    Download
                   </Button>
                 </div>
-
-                {stage === "error" && errorMsg && (
-                  <p className="text-xs text-destructive text-center">{errorMsg}</p>
-                )}
-
-                {urlInfo && stage === "ready" && (
-                  <div className="flex gap-3 rounded-lg border border-card-border bg-card p-3">
-                    {urlInfo.thumbnailUrl ? (
-                      <img
-                        src={urlInfo.thumbnailUrl}
-                        alt=""
-                        className="h-14 w-20 shrink-0 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded bg-muted">
-                        <Music2 className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <p className="line-clamp-2 text-sm font-medium leading-snug">
-                        {urlInfo.title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{urlInfo.author}</p>
-                      <p className="text-xs text-muted-foreground/60">
-                        {formatDuration(urlInfo.durationSecs)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {stage === "ready" && urlInfo && (
-                  <div className="flex justify-end">
-                    <DownloadButton
-                      id="url"
-                      downloadingId={downloadingId}
-                      onPick={(type) => {
-                        if (type === "merged") {
-                          handlePickMerged(url.trim(), urlInfo!, "url");
-                        } else {
-                          setDownloadingId("url");
-                          performDownload(url.trim(), urlInfo!, type);
-                        }
-                      }}
-                    />
-                  </div>
-                )}
+                {errorMsg && <p className="text-xs text-destructive text-center">{errorMsg}</p>}
+                <p className="text-[11px] text-muted-foreground">
+                  For playlists, use the <strong>Playlist</strong> tab above.
+                </p>
               </div>
             )}
           </div>

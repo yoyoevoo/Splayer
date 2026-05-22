@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { platformAPI } from "@/lib/platform-api";
 import {
   Dialog,
   DialogContent,
@@ -55,7 +56,7 @@ function formatDate(ts: number) {
 
 export function DuplicateFinder({ open, onOpenChange }: DuplicateFinderProps) {
   const { tracks, removeTrack } = usePlayer();
-  const hasElectron = typeof window !== "undefined" && !!window.electronAPI;
+  const hasElectron = typeof window !== "undefined" && !!platformAPI;
 
   const [phase,   setPhase]   = useState<Phase>("idle");
   const [groups,  setGroups]  = useState<DuplicateGroup[]>([]);
@@ -121,7 +122,7 @@ export function DuplicateFinder({ open, onOpenChange }: DuplicateFinderProps) {
 
     let outputFolder: string | null = null;
     if (moveToFolder && hasElectron) {
-      outputFolder = await window.electronAPI!.showFolderDialog();
+      outputFolder = await platformAPI!.showFolderDialog();
       if (!outputFolder) {
         setRemoving(false);
         setPhase("results");
@@ -137,7 +138,7 @@ export function DuplicateFinder({ open, onOpenChange }: DuplicateFinderProps) {
         // copy file to the chosen folder before removing from library
         try {
           const buf = await t.file.arrayBuffer();
-          await window.electronAPI!.writeFile(
+          await platformAPI!.writeFile(
             `${outputFolder}/${t.file.name}`,
             new Uint8Array(buf),
           );

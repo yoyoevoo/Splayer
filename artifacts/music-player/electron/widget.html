@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="color-scheme" content="dark"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:300px;height:80px;overflow:hidden;background:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;-webkit-font-smoothing:antialiased}
+
+:root{
+  --accent:#5b9cf6;
+  --bg:rgba(11,11,18,0.94);
+  --border:rgba(255,255,255,0.1);
+  --t1:rgba(255,255,255,0.90);
+  --t2:rgba(255,255,255,0.50);
+  --btn-h:rgba(255,255,255,0.11);
+  --prog-bg:rgba(255,255,255,0.11);
+}
+
+/* ── Container ─────────────────────────────────────────────── */
+.w{
+  position:relative;
+  width:300px;height:80px;
+  background:var(--bg);
+  backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  display:flex;align-items:center;
+  -webkit-app-region:drag;
+  user-select:none;-webkit-user-select:none;
+}
+
+/* ── Album art ─────────────────────────────────────────────── */
+.art{
+  width:54px;height:54px;min-width:54px;
+  border-radius:8px;margin-left:12px;
+  background:rgba(255,255,255,0.07);
+  overflow:hidden;display:flex;align-items:center;justify-content:center;
+  -webkit-app-region:drag;flex-shrink:0;
+}
+.art img{width:100%;height:100%;object-fit:cover;display:block}
+.art-ph{font-size:22px;color:rgba(255,255,255,0.22);line-height:1}
+
+/* ── Track info ────────────────────────────────────────────── */
+.info{
+  flex:1;min-width:0;padding:0 6px 0 9px;
+  -webkit-app-region:drag;
+}
+.ttl{
+  color:var(--t1);font-size:12px;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35;
+}
+.sub{
+  color:var(--t2);font-size:10.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  margin-top:2px;line-height:1.35;
+}
+.idle{color:rgba(255,255,255,0.28);font-size:11px}
+
+/* ── Controls ──────────────────────────────────────────────── */
+.ctrls{
+  display:flex;align-items:center;gap:1px;
+  padding-right:9px;flex-shrink:0;
+  -webkit-app-region:no-drag;
+}
+.btn{
+  width:28px;height:28px;border:none;background:transparent;
+  color:var(--t2);border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 110ms,color 110ms;
+  -webkit-app-region:no-drag;flex-shrink:0;outline:none;
+}
+.btn:hover{background:var(--btn-h);color:var(--t1)}
+.btn:active{transform:scale(0.88)}
+.play-btn{
+  width:32px;height:32px;
+  background:rgba(255,255,255,0.11);color:var(--t1);
+}
+.play-btn:hover{background:rgba(255,255,255,0.20)}
+
+/* ── Close button ──────────────────────────────────────────── */
+.close-btn{
+  position:absolute;top:5px;right:5px;
+  width:16px;height:16px;border:none;background:transparent;
+  color:rgba(255,255,255,0.25);border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background 110ms,color 110ms;
+  -webkit-app-region:no-drag;outline:none;padding:0;
+}
+.close-btn:hover{background:rgba(210,50,50,0.65);color:#fff}
+
+/* ── Progress bar ──────────────────────────────────────────── */
+.prog-track{
+  position:absolute;bottom:0;left:0;right:0;height:3px;
+  background:var(--prog-bg);cursor:pointer;
+  -webkit-app-region:no-drag;
+}
+.prog-fill{
+  height:100%;background:var(--accent);width:0%;
+  border-radius:0 2px 2px 0;will-change:width;
+  transition:width 0.4s linear;
+}
+</style>
+</head>
+<body>
+<div class="w">
+
+  <!-- Close -->
+  <button class="close-btn" id="btn-x" title="Hide widget">
+    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+      <line x1="1" y1="1" x2="7" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <line x1="7" y1="1" x2="1" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <!-- Art -->
+  <div class="art" id="art">
+    <span class="art-ph" id="art-ph">&#9835;</span>
+    <img id="art-img" src="" alt="" style="display:none"/>
+  </div>
+
+  <!-- Info -->
+  <div class="info">
+    <div class="idle" id="idle">Nothing playing</div>
+    <div id="ti" style="display:none">
+      <div class="ttl" id="ttl"></div>
+      <div class="sub" id="sub"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="ctrls">
+    <button class="btn" id="btn-prev" title="Previous">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+      </svg>
+    </button>
+    <button class="btn play-btn" id="btn-play" title="Play / Pause">
+      <svg id="ico-p" width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+      <svg id="ico-pa" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+      </svg>
+    </button>
+    <button class="btn" id="btn-next" title="Next">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Progress -->
+  <div class="prog-track" id="prog-track">
+    <div class="prog-fill" id="prog-fill"></div>
+  </div>
+
+</div>
+<script>
+(function(){
+'use strict';
+var state={title:'',artist:'',coverUrl:null,isPlaying:false,duration:0,position:0,sentAt:0};
+var elIdle=document.getElementById('idle');
+var elTi=document.getElementById('ti');
+var elTtl=document.getElementById('ttl');
+var elSub=document.getElementById('sub');
+var elImg=document.getElementById('art-img');
+var elPh=document.getElementById('art-ph');
+var elIcP=document.getElementById('ico-p');
+var elIcPa=document.getElementById('ico-pa');
+var elFill=document.getElementById('prog-fill');
+var rafId=null;
+var saveTm=null;
+
+function calcPos(){
+  if(!state.sentAt||!state.isPlaying) return state.position;
+  return Math.min(state.position+(Date.now()-state.sentAt)/1000, state.duration||0);
+}
+
+function tick(){
+  if(state.isPlaying&&state.duration>0){
+    var pct=(Math.min(calcPos()/state.duration,1)*100).toFixed(2);
+    elFill.style.width=pct+'%';
+  }
+  rafId=requestAnimationFrame(tick);
+}
+
+function applyState(){
+  var has=!!state.title;
+  elIdle.style.display=has?'none':'block';
+  elTi.style.display=has?'block':'none';
+  if(has){elTtl.textContent=state.title;elSub.textContent=state.artist||'Unknown artist';}
+  if(state.coverUrl){
+    elImg.src=state.coverUrl;elImg.style.display='block';elPh.style.display='none';
+  } else {elImg.style.display='none';elPh.style.display='block';}
+  elIcP.style.display=state.isPlaying?'none':'block';
+  elIcPa.style.display=state.isPlaying?'block':'none';
+  if(!state.isPlaying&&state.duration>0){
+    elFill.style.width=(Math.min(state.position/state.duration,1)*100).toFixed(2)+'%';
+  }
+}
+
+// Buttons
+document.getElementById('btn-x').onclick=function(){window.electronAPI.widgetHide();};
+document.getElementById('btn-prev').onclick=function(){window.electronAPI.widgetAction('prev');};
+document.getElementById('btn-next').onclick=function(){window.electronAPI.widgetAction('next');};
+document.getElementById('btn-play').onclick=function(){window.electronAPI.widgetAction('play-pause');};
+
+// Progress click → seek
+document.getElementById('prog-track').addEventListener('click',function(e){
+  if(!state.duration) return;
+  var r=this.getBoundingClientRect();
+  var pct=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  window.electronAPI.widgetAction({type:'seek',position:pct*state.duration});
+});
+
+// Receive state
+window.electronAPI.onWidgetState(function(s){
+  state=s;
+  applyState();
+});
+
+// Receive moved → debounced localStorage save
+window.electronAPI.onWidgetMoved(function(pos){
+  clearTimeout(saveTm);
+  saveTm=setTimeout(function(){
+    try{localStorage.setItem('widget-pos',JSON.stringify(pos));}catch(e){}
+  },300);
+});
+
+// Restore saved position
+try{
+  var saved=localStorage.getItem('widget-pos');
+  if(saved){
+    var p=JSON.parse(saved);
+    if(typeof p.x==='number'&&typeof p.y==='number'){
+      window.electronAPI.widgetInitPosition(p);
+    }
+  }
+}catch(e){}
+
+// Start RAF loop
+rafId=requestAnimationFrame(tick);
+applyState();
+})();
+</script>
+</body>
+</html>

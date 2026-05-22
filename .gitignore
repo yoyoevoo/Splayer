@@ -27,6 +27,18 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# env files (never commit real credentials)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.staging
+.env.test
+
+# Claude Code local settings (may contain shell commands with credentials)
+**/.claude/settings.local.json
+
 # misc
 /.sass-cache
 /connect.lock
@@ -49,3 +61,28 @@ Thumbs.db
 .local/
 artifacts/music-player/release/
 artifacts/music-player/node_modules/
+
+# Native binaries and installer packages — large and platform-specific
+artifacts/music-player/android/app/src/main/jniLibs/
+artifacts/music-player/resources/
+**/*.so
+**/*.dylib
+*.deb
+*.rpm
+*.AppImage
+*.dmg
+*.exe
+*.msi
+
+# Android build directory
+artifacts/music-player/android/
+
+# Release APK build artifacts
+artifacts/music-player/*.apk
+
+# Release signing keystore — never commit private keys
+artifacts/music-player/android/keystore/*.jks
+artifacts/music-player/android/keystore/*.keystore
+
+# Backup files
+**/*.bak

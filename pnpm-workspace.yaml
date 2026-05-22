@@ -1,3 +1,38 @@
+
+packages:
+  - artifacts/*
+  - lib/*
+  - lib/integrations/*
+  - scripts
+
+autoInstallPeers: false
+
+catalog:
+  '@replit/vite-plugin-cartographer': ^0.5.1
+  '@replit/vite-plugin-dev-banner': ^0.1.1
+  '@replit/vite-plugin-runtime-error-modal': ^0.0.6
+  '@tailwindcss/vite': ^4.1.14
+  '@tanstack/react-query': ^5.90.21
+  '@types/node': ^25.3.3
+  '@types/react': ^19.2.0
+  '@types/react-dom': ^19.2.0
+  '@vitejs/plugin-react': ^5.0.4
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  drizzle-orm: ^0.45.2
+  framer-motion: ^12.23.24
+  lucide-react: ^0.545.0
+  # Must be this exact version because expo requires it
+  react: 19.1.0
+  # Must be this exact version because expo requires it
+  react-dom: 19.1.0
+  tailwind-merge: ^3.3.1
+  tailwindcss: ^4.1.14
+  tsx: ^4.21.0
+  vite: ^7.3.2
+  zod: ^3.25.76
+ignoredBuiltDependencies:
+  - electron
 # ============================================================================
 # SECURITY: Minimum release age for npm packages (supply-chain attack defense)
 # ============================================================================
@@ -34,39 +69,6 @@ minimumReleaseAgeExclude:
   - '@replit/*'
   - stripe-replit-sync
 
-packages:
-  - artifacts/*
-  - lib/*
-  - lib/integrations/*
-  - scripts
-
-catalog:
-  '@replit/vite-plugin-cartographer': ^0.5.1
-  '@replit/vite-plugin-dev-banner': ^0.1.1
-  '@replit/vite-plugin-runtime-error-modal': ^0.0.6
-  '@tailwindcss/vite': ^4.1.14
-  '@tanstack/react-query': ^5.90.21
-  '@types/node': ^25.3.3
-  '@types/react': ^19.2.0
-  '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^5.0.4
-  class-variance-authority: ^0.7.1
-  clsx: ^2.1.1
-  drizzle-orm: ^0.45.2
-  framer-motion: ^12.23.24
-  lucide-react: ^0.545.0
-  # Must be this exact version because expo requires it
-  react: 19.1.0
-  # Must be this exact version because expo requires it
-  react-dom: 19.1.0
-  tailwind-merge: ^3.3.1
-  tailwindcss: ^4.1.14
-  tsx: ^4.21.0
-  vite: ^7.3.2
-  zod: ^3.25.76
-
-autoInstallPeers: false
-
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
@@ -74,7 +76,45 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # ---- security patches for transitive vulnerable deps ----
+  # express > router uses path-to-regexp <8.4.0 (ReDoS via sequential optional groups)
+  path-to-regexp: ">=8.4.0"
+  # yt-search > node-fzf > redstar uses minimatch <3.1.4 (multiple ReDoS advisories)
+  minimatch: ">=3.1.4"
+  # orval > @scalar/openapi-parser > ajv uses fast-uri <3.1.2 (path traversal / host confusion)
+  fast-uri: ">=3.1.2"
+  # vite bundles yaml <2.8.3 (arbitrary code execution) and postcss <8.5.10 (XSS via unescaped </style>)
+  yaml: ">=2.8.3"
+  postcss: ">=8.5.10"
+  # ---- platform / build-tool overrides (non-security) ----
   # replit uses linux-x64 only, we can exclude all other platforms
+  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
+  "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
+  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-x64": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-linux-arm": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-linux-arm64": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-linux-ia32": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32": "-"
+  "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-android-arm64": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-darwin-arm64": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-darwin-x64": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-freebsd-x64": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm-gnueabihf": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-gnu": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-musl": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc": "-"
+  esbuild: "0.27.3"
+  "esbuild>@esbuild/aix-ppc64": '-'
+  "esbuild>@esbuild/android-arm": '-'
+  "esbuild>@esbuild/android-arm64": '-'
+  "esbuild>@esbuild/android-x64": '-'
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -91,15 +131,11 @@ overrides:
   "esbuild>@esbuild/netbsd-x64": "-"
   "esbuild>@esbuild/openbsd-arm64": "-"
   "esbuild>@esbuild/openbsd-x64": "-"
+  "esbuild>@esbuild/openharmony-arm64": '-'
   "esbuild>@esbuild/sunos-x64": "-"
   "esbuild>@esbuild/win32-arm64": "-"
   "esbuild>@esbuild/win32-ia32": "-"
   "esbuild>@esbuild/win32-x64": "-"
-  "esbuild>@esbuild/aix-ppc64": '-'
-  "esbuild>@esbuild/android-arm": '-'
-  "esbuild>@esbuild/android-arm64": '-'
-  "esbuild>@esbuild/android-x64": '-'
-  "esbuild>@esbuild/openharmony-arm64": '-'
   "lightningcss>lightningcss-android-arm64": "-"
   "lightningcss>lightningcss-darwin-arm64": "-"
   "lightningcss>lightningcss-darwin-x64": "-"
@@ -110,16 +146,6 @@ overrides:
   "lightningcss>lightningcss-linux-x64-musl": "-"
   "lightningcss>lightningcss-win32-arm64-msvc": "-"
   "lightningcss>lightningcss-win32-x64-msvc": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-android-arm64": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-darwin-arm64": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-darwin-x64": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-freebsd-x64": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm-gnueabihf": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-gnu": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-musl": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl": "-"
   "rollup>@rollup/rollup-android-arm-eabi": "-"
   "rollup>@rollup/rollup-android-arm64": "-"
   "rollup>@rollup/rollup-darwin-arm64": "-"
@@ -144,16 +170,3 @@ overrides:
   "rollup>@rollup/rollup-win32-ia32-msvc": "-"
   "rollup>@rollup/rollup-win32-x64-gnu": "-"
   "rollup>@rollup/rollup-win32-x64-msvc": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-freebsd-x64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-linux-arm64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-linux-arm": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-linux-ia32": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32": "-"
-  "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
-  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
-  "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"

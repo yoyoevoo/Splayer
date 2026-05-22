@@ -1,4 +1,5 @@
 import { getAllStoredTracks, getAllStoredPlaylists } from "./idb";
+import { platformAPI } from "./platform-api";
 
 // ── localStorage keys ─────────────────────────────────────────────────────────
 export const AB = {
@@ -57,9 +58,12 @@ async function buildBackupJson(): Promise<string> {
 
 // ── Trigger one auto-backup ───────────────────────────────────────────────────
 export async function runAutoBackup(): Promise<"ok" | "no-folder" | "error"> {
-  const downloadsDir = localStorage.getItem("settings-downloads-path")?.trim();
+  const downloadsDir = (
+    localStorage.getItem("settings-backup-path") ||
+    localStorage.getItem("settings-downloads-path")
+  )?.trim();
   if (!downloadsDir) return "no-folder";
-  if (!window.electronAPI?.writeFile || !window.electronAPI?.deleteFile) return "error";
+  if (!platformAPI?.writeFile || !platformAPI?.deleteFile) return "error";
 
   try {
     const json  = await buildBackupJson();
@@ -68,7 +72,7 @@ export async function runAutoBackup(): Promise<"ok" | "no-folder" | "error"> {
     const fname = `Splayer_auto_backup_${date}.json`;
     const fpath = `${downloadsDir}/${fname}`;
 
-    const result = await window.electronAPI.writeFile(fpath, bytes);
+    const result = await platformAPI.writeFile(fpath, bytes);
     if (!result.success) return "error";
 
     const now     = Date.now();
@@ -77,7 +81,7 @@ export async function runAutoBackup(): Promise<"ok" | "no-folder" | "error"> {
     const toDelete = history.slice(2);   // entries that no longer fit in the 3-file cap
 
     for (const entry of toDelete) {
-      try { await window.electronAPI.deleteFile(entry.path); } catch {}
+      try { await platformAPI.deleteFile(entry.path); } catch {}
     }
 
     localStorage.setItem(AB.history, JSON.stringify(next));

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { platformAPI } from "@/lib/platform-api";
 import { Archive, Download, FolderOpen, Monitor, Settings, Upload } from "lucide-react";
 import {
   Dialog,
@@ -30,6 +31,7 @@ const LS = {
   musicLibrary:  "settings-music-library-path",
   downloads:     "settings-downloads-path",
   videos:        "settings-videos-path",
+  backup:        "settings-backup-path",
   closeBehavior: "settings-close-behavior",
 } as const;
 
@@ -55,7 +57,7 @@ function FolderRow({ label, description, lsKey }: FolderRowProps) {
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isElectron = !!window.electronAPI?.showFolderDialog;
+  const isElectron = !!platformAPI?.showFolderDialog;
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -66,7 +68,7 @@ function FolderRow({ label, description, lsKey }: FolderRowProps) {
   }
 
   async function handlePick() {
-    const picked = await window.electronAPI!.showFolderDialog();
+    const picked = await platformAPI!.showFolderDialog();
     if (picked) {
       setPath(picked);
       savePath(lsKey, picked);
@@ -149,7 +151,7 @@ function CloseBehaviorSection() {
   function select(v: CloseBehavior) {
     setBehavior(v);
     try { localStorage.setItem(LS.closeBehavior, v); } catch {}
-    window.electronAPI?.setCloseBehavior?.(v);
+    platformAPI?.setCloseBehavior?.(v);
   }
 
   return (
@@ -194,7 +196,7 @@ function CloseBehaviorSection() {
         })}
       </div>
 
-      {!window.electronAPI && (
+      {!platformAPI && (
         <p className="text-xs text-muted-foreground/60 italic">
           This setting only applies in the desktop app.
         </p>
@@ -220,7 +222,7 @@ function BackupSection() {
   const [autoRunning, setAutoRunning]   = useState(false);
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const noFolder = !(localStorage.getItem("settings-downloads-path")?.trim());
+  const noFolder = !(localStorage.getItem(LS.backup)?.trim());
 
   function flashAuto(msg: string) {
     setAutoStatus(msg);
@@ -484,6 +486,176 @@ function BackupSection() {
   );
 }
 
+// ── StartOnBootSection ────────────────────────────────────────────────────────
+
+function StartOnBootSection() {
+  const [enabled, setEnabled] = useState(
+    () => localStorage.getItem("start-on-boot") === "true",
+  );
+  const [loading, setLoading] = useState(true);
+
+  // Sync with the real OS state on mount so the toggle always reflects reality.
+  useEffect(() => {
+    (platformAPI as any)?.getLoginItemSettings?.()
+      .then(({ openAtLogin }: { openAtLogin: boolean }) => {
+        setEnabled(openAtLogin);
+        try { localStorage.setItem("start-on-boot", openAtLogin ? "true" : "false"); } catch {}
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function toggle() {
+    const next = !enabled;
+    setEnabled(next);
+    try { localStorage.setItem("start-on-boot", next ? "true" : "false"); } catch {}
+    await (platformAPI as any)?.setLoginItemSettings?.(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Start on boot</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Automatically launch Splayer when you log in.
+          </p>
+        </div>
+        <button
+          onClick={loading ? undefined : toggle}
+          disabled={!platformAPI}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200",
+            enabled ? "bg-primary" : "bg-muted",
+            loading ? "opacity-60 cursor-wait" : "cursor-pointer",
+            !platformAPI && "opacity-40 cursor-not-allowed",
+          )}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform duration-200",
+              enabled ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+      {!platformAPI && (
+        <p className="text-xs text-muted-foreground/60 italic">
+          Start on boot only works in the desktop app.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── OsMediaSection ────────────────────────────────────────────────────────────
+
+function OsMediaSection() {
+  const [enabled, setEnabled] = useState(
+    () => localStorage.getItem("os-media-enabled") !== "false",
+  );
+
+  function toggle() {
+    const next = !enabled;
+    setEnabled(next);
+    try { localStorage.setItem("os-media-enabled", next ? "true" : "false"); } catch {}
+    (platformAPI as any)?.setOsMediaEnabled?.(next);
+  }
+
+  const platform = (platformAPI as any)?.platform as string | undefined;
+  const isLinux  = platform === "linux";
+  const isWin    = platform === "win32";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">OS Media Integration</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {isLinux && "Show current track in GNOME / KDE media widget (MPRIS). Responds to media keys from the OS."}
+            {isWin  && "Show current track in the Windows media popup (SMTC). Responds to volume-key media controls."}
+            {!isLinux && !isWin && "Shows track info and responds to OS media keys (MPRIS on Linux, SMTC on Windows)."}
+          </p>
+        </div>
+        <button
+          onClick={toggle}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+            enabled ? "bg-primary" : "bg-muted",
+          )}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform duration-200",
+              enabled ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+      {!platformAPI && (
+        <p className="text-xs text-muted-foreground/60 italic">
+          OS media integration only works in the desktop app.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── DiscordSection ────────────────────────────────────────────────────────────
+
+function DiscordSection() {
+  const [enabled, setEnabled] = useState(
+    () => localStorage.getItem("discord-rpc-enabled") !== "false",
+  );
+
+  function toggle() {
+    const next = !enabled;
+    setEnabled(next);
+    try { localStorage.setItem("discord-rpc-enabled", next ? "true" : "false"); } catch {}
+    (platformAPI as any)?.discordRpcSetEnabled?.(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">Discord Rich Presence</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Show the currently playing song on your Discord profile.
+            Requires Discord to be open and a configured application ID in{" "}
+            <span className="font-mono">electron/main.cjs</span>.
+          </p>
+        </div>
+        <button
+          onClick={toggle}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+            enabled ? "bg-primary" : "bg-muted",
+          )}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform duration-200",
+              enabled ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
+      {!platformAPI && (
+        <p className="text-xs text-muted-foreground/60 italic">
+          Discord Rich Presence only works in the desktop app.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── SettingsDialog ────────────────────────────────────────────────────────────
 
 type Tab = "folders" | "downloads" | "behavior" | "backup";
@@ -495,6 +667,21 @@ interface Props {
 
 export function SettingsDialog({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState<Tab>("folders");
+  const [folderKey, setFolderKey] = useState(0);
+
+  function resetToDefaults() {
+    (platformAPI as any)?.getAppPaths?.().then((dirs: { downloads: string; backups: string } | undefined) => {
+      if (!dirs) return;
+      try {
+        localStorage.setItem(LS.musicLibrary, dirs.downloads);
+        localStorage.setItem(LS.downloads,    dirs.downloads);
+        localStorage.setItem(LS.videos,       dirs.downloads);
+        localStorage.setItem(LS.backup,       dirs.backups);
+        localStorage.setItem("splayer-folders-v1", "1");
+        setFolderKey((k) => k + 1); // remount FolderRows to read updated values
+      } catch {}
+    }).catch(() => {});
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -562,6 +749,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
         {tab === "folders" && (
           <div className="space-y-5 py-1">
             <FolderRow
+              key={`music-${folderKey}`}
               label="Music Library Folder"
               description="The folder where your local music files live."
               lsKey={LS.musicLibrary}
@@ -570,6 +758,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <hr className="border-card-border" />
 
             <FolderRow
+              key={`downloads-${folderKey}`}
               label="Downloads Folder"
               description="Where downloaded YouTube audio files are saved to disk."
               lsKey={LS.downloads}
@@ -578,10 +767,28 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <hr className="border-card-border" />
 
             <FolderRow
+              key={`videos-${folderKey}`}
               label="Videos Folder"
               description="Where downloaded YouTube video files (MP4) are saved to disk."
               lsKey={LS.videos}
             />
+
+            <hr className="border-card-border" />
+
+            <FolderRow
+              key={`backup-${folderKey}`}
+              label="Backup Folder"
+              description="Where automatic and manual backups are saved."
+              lsKey={LS.backup}
+            />
+
+            <hr className="border-card-border" />
+
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={resetToDefaults}>
+                Reset to defaults (~/Music/Splayer/)
+              </Button>
+            </div>
           </div>
         )}
 
@@ -597,11 +804,31 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
 
         {/* ── Behavior tab ── */}
         {tab === "behavior" && (
-          <div className="py-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-              App Behavior
-            </p>
-            <CloseBehaviorSection />
+          <div className="py-1 space-y-5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                App Behavior
+              </p>
+              <div className="space-y-5">
+                <StartOnBootSection />
+                <hr className="border-card-border" />
+                <CloseBehaviorSection />
+              </div>
+            </div>
+            <hr className="border-card-border" />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                OS Media
+              </p>
+              <OsMediaSection />
+            </div>
+            <hr className="border-card-border" />
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                Discord
+              </p>
+              <DiscordSection />
+            </div>
           </div>
         )}
 
@@ -614,6 +841,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <BackupSection />
           </div>
         )}
+
       </DialogContent>
     </Dialog>
   );

@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Clock,
+  FolderOpen,
   FolderX,
+  GripVertical,
   Heart,
   History,
   Play,
@@ -14,8 +16,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -24,9 +26,13 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { usePlayer } from "@/lib/player-context";
+import { showTrackInFolder } from "@/lib/show-in-folder";
 import { DeleteTrackDialog } from "./DeleteTrackDialog";
 import { NewPlaylistDialog } from "./NewPlaylistDialog";
 import { AddToPlaylistContextSub } from "./AddToPlaylistContextSub";
+import { BulkTagEditor } from "./BulkTagEditor";
+import { SelectionActionBar } from "./SelectionActionBar";
+import { JumpToCurrentButton, scrollToRow } from "./JumpToCurrentButton";
 import {
   trackCoverUrl,
   smartPlaylistTracks,
@@ -90,6 +96,48 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
   const [deleteTarget, setDeleteTarget] = useState<import("@/lib/types").Track | null>(null);
   const [newPlaylistFor, setNewPlaylistFor] = useState<string | null>(null);
 
+  // Selection mode
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectionMode = selectedIds.size > 0;
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
+  const [bulkEditorInitialIds, setBulkEditorInitialIds] = useState<string[]>([]);
+
+  // Heart animation
+  const [animatingLikeIds, setAnimatingLikeIds] = useState<Set<string>>(new Set());
+  const triggerLikeAnim = (id: string) => {
+    setAnimatingLikeIds(prev => new Set(prev).add(id));
+    setTimeout(() => setAnimatingLikeIds(prev => { const n = new Set(prev); n.delete(id); return n; }), 300);
+  };
+
+  // Drag-to-reorder state (in-memory only, not persisted for smart playlists)
+  const [orderedIds, setOrderedIds] = useState<string[] | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const showInFolder = (track: { id: string; file?: File; path?: string; url?: string }) =>
+    showTrackInFolder(track);
+
+  // Drag-to-reorder via explicit handle — no long-press timer needed
+  const listRef = useRef<HTMLUListElement>(null);
+  const touchStateRef = useRef<{ id: string | null; dragging: boolean }>({ id: null, dragging: false });
+  const draggedIdRef = useRef<string | null>(null);
+  draggedIdRef.current = draggedId;
+  const dragOverIndexRef = useRef<number | null>(null);
+  dragOverIndexRef.current = dragOverIndex;
+
+  // Jump-to-current
+  const [highlightedId, setHighlightedId] = useState("");
+  const handleJump = useCallback(() => {
+    if (!currentTrack) return;
+    scrollToRow(`smart-track-${currentTrack.id}`, setHighlightedId, currentTrack.id);
+  }, [currentTrack]);
+
   const meta = SMART_PLAYLISTS.find((s) => s.kind === kind);
   const Icon = smartIcon(kind);
 
@@ -98,10 +146,19 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
     [kind, tracks, playlists],
   );
 
+  // Apply manual drag order on top of computed; new tracks are appended, removed ones dropped.
+  const displayTracks = useMemo(() => {
+    if (!orderedIds) return computed;
+    const map = new Map(computed.map((t) => [t.id, t]));
+    const ordered = orderedIds.flatMap((id) => { const t = map.get(id); return t ? [t] : []; });
+    const orderedSet = new Set(orderedIds);
+    return [...ordered, ...computed.filter((t) => !orderedSet.has(t.id))];
+  }, [computed, orderedIds]);
+
   const filtered = useMemo(() => {
-    if (!query) return computed.map((t, i) => ({ t, i }));
+    if (!query) return displayTracks.map((t, i) => ({ t, i }));
     const q = query.toLowerCase();
-    return computed
+    return displayTracks
       .map((t, i) => ({ t, i }))
       .filter(
         ({ t }) =>
@@ -109,21 +166,26 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
           t.artist.toLowerCase().includes(q) ||
           t.album.toLowerCase().includes(q),
       );
-  }, [computed, query]);
+  }, [displayTracks, query]);
+
+  const jumpVisible =
+    !!currentTrack && filtered.some(({ t }) => t.id === currentTrack.id);
 
   const totalSec = computed.reduce((sum, t) => sum + (t.duration || 0), 0);
 
   const onPlayAll = () => {
-    if (computed.length === 0) return;
+    if (displayTracks.length === 0) return;
     playFromList(
-      computed.map((t) => t.id),
+      displayTracks.map((t) => t.id),
       0,
       meta?.name ?? "Smart Playlist",
+      null,
+      "smart",
     );
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
       <div className="p-3 border-b border-card-border space-y-3">
         <div className="flex items-center justify-between">
           <Button
@@ -184,7 +246,7 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
         )}
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
         {computed.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <div className="text-sm text-muted-foreground">
@@ -192,9 +254,37 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
             </div>
           </div>
         ) : (
-          <ul className="p-2 space-y-1">
+          <ul
+            ref={listRef}
+            className="p-2 space-y-1 pb-14"
+            style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
+            onContextMenuCapture={(e) => {
+              if (draggedIdRef.current) { e.preventDefault(); e.stopPropagation(); }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (!draggedId || dragOverIndex === null) return;
+              const fromIdx = displayTracks.findIndex((t) => t.id === draggedId);
+              const toIdx = dragOverIndex;
+              if (fromIdx === -1 || fromIdx === toIdx || fromIdx === toIdx - 1) {
+                setDraggedId(null);
+                setDragOverIndex(null);
+                return;
+              }
+              const newIds = displayTracks.map((t) => t.id);
+              newIds.splice(fromIdx, 1);
+              newIds.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, draggedId);
+              setOrderedIds(newIds);
+              setDraggedId(null);
+              setDragOverIndex(null);
+            }}
+            onDragLeave={(e) => {
+              if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setDragOverIndex(null);
+            }}
+          >
             <AnimatePresence initial={false}>
-              {filtered.map(({ t, i }) => {
+              {filtered.map(({ t, i }, listIdx) => {
                 const isActive = currentTrack?.id === t.id;
                 const liked = t.liked ?? false;
                 return (
@@ -205,29 +295,50 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                     exit={{ opacity: 0, x: 20 }}
                     transition={{ duration: 0.2 }}
                   >
+                    {/* Drop insertion line above this row */}
+                    {draggedId && dragOverIndex === listIdx && (
+                      <div className="h-0.5 bg-primary rounded-full mx-1 mb-1 pointer-events-none" aria-hidden />
+                    )}
                     <ContextMenu>
-                      <ContextMenuTrigger asChild>
+                      <ContextMenuTrigger className="block w-full rounded-md">
                     <div
+                      data-drag-item={t.id}
                       className={cn(
-                        "group relative flex items-center gap-3 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
+                        "group relative flex items-center gap-2 p-2 rounded-md cursor-pointer hover-elevate active-elevate-2",
                         isActive && "bg-accent",
+                        selectedIds.has(t.id) && "bg-primary/10 border border-primary/30",
+                        draggedId === t.id && "opacity-50",
+                        highlightedId === t.id && "ring-1 ring-primary/50 bg-primary/5",
                       )}
-                      onClick={() =>
+                      onClick={() => {
                         playFromList(
-                          computed.map((tr) => tr.id),
+                          displayTracks.map((tr) => tr.id),
                           i,
                           meta?.name ?? "Smart Playlist",
-                        )
-                      }
+                          null,
+                          "smart",
+                        );
+                      }}
                       data-testid={`smart-track-${t.id}`}
                     >
+                      {/* Checkbox — always visible, click to select */}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(t.id); }}
+                        className="shrink-0 flex items-center justify-center w-5 h-5"
+                        aria-label={selectedIds.has(t.id) ? "Deselect" : "Select"}
+                      >
+                        <Checkbox checked={selectedIds.has(t.id)} className="h-4 w-4 pointer-events-none" />
+                      </button>
                       <div className="text-[11px] text-muted-foreground tabular-nums w-5 text-right shrink-0">
                         {i + 1}
                       </div>
-                      <div className="relative">
+                      <div className="relative shrink-0">
                         <AlbumCover
                           src={trackCoverUrl(t)}
                           seed={t.title + t.artist}
+                          title={t.title}
+                          artist={t.artist}
                           size="sm"
                         />
                         {isActive && (
@@ -267,32 +378,95 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleLike(t.id);
+                          triggerLikeAnim(t.id);
                         }}
                         className={cn(
-                          "h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0",
+                          "h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0 transition-colors duration-200",
                           liked
                             ? "text-red-500 opacity-100"
-                            : "text-muted-foreground",
+                            : "text-muted-foreground hover:text-red-400",
                         )}
                         aria-label={liked ? "Unlike" : "Like"}
                       >
                         <Heart
-                          className="w-3.5 h-3.5"
+                          className={cn("w-3.5 h-3.5", animatingLikeIds.has(t.id) && "heart-beat")}
                           fill={liked ? "currentColor" : "none"}
                         />
                       </Button>
                       <span className="text-[11px] text-muted-foreground tabular-nums">
                         {formatTime(t.duration)}
                       </span>
+                      {/* Drag handle — right side, pointer events for touch + mouse */}
+                      <button
+                        type="button"
+                        aria-label="Drag to reorder"
+                        style={{ touchAction: 'none' }}
+                        className="shrink-0 flex items-center justify-center w-7 h-8 text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          const id = t.id;
+                          touchStateRef.current = { id, dragging: true };
+                          draggedIdRef.current = id;
+                          const row = listRef.current?.querySelector(`[data-drag-item="${id}"]`) as HTMLElement | null;
+                          if (row) row.style.opacity = '0.45';
+                          setDraggedId(id);
+                        }}
+                        onPointerMove={(e) => {
+                          if (!touchStateRef.current.dragging) return;
+                          const y = e.clientY;
+                          const items = listRef.current?.querySelectorAll('[data-drag-item]');
+                          if (!items) return;
+                          let idx = items.length;
+                          for (let j = 0; j < items.length; j++) {
+                            const rect = items[j].getBoundingClientRect();
+                            if (y < rect.top + rect.height / 2) { idx = j; break; }
+                          }
+                          dragOverIndexRef.current = idx;
+                          setDragOverIndex(idx);
+                        }}
+                        onPointerUp={() => {
+                          const dId = draggedIdRef.current;
+                          const dIdx = dragOverIndexRef.current;
+                          const row = dId ? listRef.current?.querySelector(`[data-drag-item="${dId}"]`) as HTMLElement | null : null;
+                          if (row) row.style.opacity = '';
+                          if (dId !== null && dIdx !== null) {
+                            const from = displayTracks.findIndex((tr) => tr.id === dId);
+                            if (from !== -1 && from !== dIdx && from !== dIdx - 1) {
+                              const newIds = displayTracks.map((tr) => tr.id);
+                              newIds.splice(from, 1);
+                              newIds.splice(dIdx > from ? dIdx - 1 : dIdx, 0, dId);
+                              setOrderedIds(newIds);
+                            }
+                          }
+                          setDraggedId(null); setDragOverIndex(null);
+                          draggedIdRef.current = null; dragOverIndexRef.current = null;
+                          touchStateRef.current = { id: null, dragging: false };
+                        }}
+                        onPointerCancel={() => {
+                          const dId = draggedIdRef.current;
+                          const row = dId ? listRef.current?.querySelector(`[data-drag-item="${dId}"]`) as HTMLElement | null : null;
+                          if (row) row.style.opacity = '';
+                          setDraggedId(null); setDragOverIndex(null);
+                          draggedIdRef.current = null; dragOverIndexRef.current = null;
+                          touchStateRef.current = { id: null, dragging: false };
+                        }}
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </button>
                     </div>
                       </ContextMenuTrigger>
                       <ContextMenuContent className="w-52">
                         <ContextMenuItem
                           onClick={() =>
                             playFromList(
-                              computed.map((tr) => tr.id),
+                              displayTracks.map((tr) => tr.id),
                               i,
                               meta?.name ?? "Smart Playlist",
+                              null,
+                              "smart",
                             )
                           }
                         >
@@ -307,6 +481,11 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                           onCreateNew={() => setNewPlaylistFor(t.id)}
                         />
                         <ContextMenuSeparator />
+                        <ContextMenuItem onClick={() => showInFolder(t)}>
+                          <FolderOpen className="w-4 h-4 mr-2" />
+                          Show in Folder
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
                         <ContextMenuItem
                           onClick={() => setDeleteTarget(t)}
                           className="text-destructive focus:text-destructive"
@@ -320,6 +499,10 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
                 );
               })}
             </AnimatePresence>
+            {/* Drop insertion line after the last row */}
+            {draggedId && dragOverIndex === filtered.length && (
+              <li className="h-0.5 bg-primary rounded-full mx-1 mt-1 pointer-events-none" aria-hidden />
+            )}
             {computed.length > 0 && filtered.length === 0 && (
               <li className="text-center text-sm text-muted-foreground p-6">
                 No matches
@@ -327,12 +510,40 @@ export function SmartPlaylistView({ kind, onBack }: SmartPlaylistViewProps) {
             )}
           </ul>
         )}
-      </ScrollArea>
+      </div>
+
+      {/* Absolute overlay */}
+      {selectionMode && (
+        <div className="absolute bottom-0 inset-x-0 z-10">
+          <SelectionActionBar
+            selectedIds={selectedIds}
+            tracks={computed}
+            playlists={playlists}
+            onClear={() => setSelectedIds(new Set())}
+            onBulkTagEdit={() => {
+              setBulkEditorInitialIds([...selectedIds]);
+              setBulkEditorOpen(true);
+            }}
+          />
+        </div>
+      )}
+
+      <JumpToCurrentButton
+        onClick={handleJump}
+        visible={jumpVisible}
+        elevated={selectionMode}
+      />
+
       <DeleteTrackDialog
         track={deleteTarget}
         open={!!deleteTarget}
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={(id) => { deleteTrackWithFile(id); setDeleteTarget(null); }}
+      />
+      <BulkTagEditor
+        open={bulkEditorOpen}
+        onOpenChange={setBulkEditorOpen}
+        initialTrackIds={bulkEditorInitialIds}
       />
       <NewPlaylistDialog
         open={newPlaylistFor !== null}

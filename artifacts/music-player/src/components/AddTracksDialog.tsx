@@ -181,6 +181,8 @@ export function AddTracksDialog({
                       <AlbumCover
                         src={trackCoverUrl(t)}
                         seed={t.title + t.artist}
+                title={t.title}
+                artist={t.artist}
                         size="sm"
                       />
                       <div className="min-w-0 flex-1">

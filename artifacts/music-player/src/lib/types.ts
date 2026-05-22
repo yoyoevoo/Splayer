@@ -16,6 +16,9 @@ export interface Track {
   playCount: number;
   lastPlayedAt?: number;
   liked?: boolean;
+  path?: string;
+  hasVideo?: boolean;
+  videoPath?: string;
 }
 
 export interface Playlist {
@@ -25,6 +28,64 @@ export interface Playlist {
   customCoverUrl?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Podcast {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl?: string;
+  feedUrl: string;
+  addedAt: number;
+}
+
+export interface PodcastEpisode {
+  id: string;
+  podcastId: string;
+  title: string;
+  description?: string;
+  pubDate?: number;
+  duration?: number;
+  audioUrl: string;
+  guid: string;
+  played: boolean;
+  progress: number;
+  thumbnail?: string;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  narrator?: string;
+  description?: string;
+  coverUrl?: string;
+  source: "local" | "youtube";
+  feedUrl?: string;
+  addedAt: number;
+  duration?: number;
+  progress?: number;
+}
+
+export interface BookChapter {
+  id: string;
+  bookId: string;
+  title: string;
+  index: number;
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
+  audioUrl?: string;
+  progress: number;
+  played: boolean;
+}
+
+export interface BookBookmark {
+  id: string;
+  bookId: string;
+  time: number;
+  note: string;
+  createdAt: number;
 }
 
 export type SmartPlaylistKind =
@@ -136,4 +197,22 @@ export function playlistDuration(playlist: Playlist, allTracks: Track[]): number
     (sum, t) => sum + (t.duration || 0),
     0,
   );
+}
+
+export type DownloadType = "audio" | "merged";
+export type DownloadStatus = "pending" | "downloading" | "done" | "error";
+
+export interface ActiveDownload {
+  id: string;
+  videoUrl: string;
+  title: string;
+  author: string;
+  thumbnailUrl: string | null;
+  type: DownloadType;
+  videoFormatId?: string | null;
+  progressAudio: number;
+  progressVideo: number;
+  progressMerge: number;
+  status: DownloadStatus;
+  errorMsg?: string;
 }

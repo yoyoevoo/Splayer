@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Open an OS folder-picker dialog. Returns the chosen path or null if cancelled. */
   showFolderDialog: () => ipcRenderer.invoke("show-folder-dialog"),
 
+  /** Open an OS save-file dialog. Returns the chosen path or null if cancelled. */
+  showSaveDialog: (options) => ipcRenderer.invoke("show-save-dialog", options),
+
   /** Write bytes to an absolute file path on disk. */
   writeFile: (filePath, bytes) =>
     ipcRenderer.invoke("write-file", { filePath, bytes }),
@@ -31,12 +34,42 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Delete a file from disk by its absolute path. */
   deleteFile: (filePath) => ipcRenderer.invoke("delete-file", filePath),
 
+  /** Open the system file manager at the folder containing the given path. */
+  showInFolder: (filePath) => ipcRenderer.invoke("show-in-folder", filePath),
+
+  /** Returns the app's default directory paths (downloads, backups, etc). */
+  getAppPaths: () => ipcRenderer.invoke("get-app-paths"),
+
+  /** Search for a track file by filename across common directories. */
+  findTrackPath: (filename, extraDirs) =>
+    ipcRenderer.invoke("find-track-path", { filename, extraDirs }),
+
+  /** Copy a file from src to dst on disk. */
+  copyFile: (src, dst) => ipcRenderer.invoke("copy-file", { src, dst }),
+
   /** Returns the port of the local YouTube embed proxy server. */
   getEmbedPort: () => ipcRenderer.invoke("get-embed-port"),
+
+  /** Fetch raw RSS XML for a podcast feed URL. */
+  podcastFetchRss: (url) => ipcRenderer.invoke("podcast-fetch-rss", url),
+
+  /** Fetch a YouTube playlist as podcast episodes via yt-dlp. */
+  ytGetPlaylist: (url) => ipcRenderer.invoke("yt-get-playlist", url),
+
+  /** Get the direct CDN audio URL for a YouTube video ID (for podcast playback). */
+  ytGetAudioUrl: (videoId) => ipcRenderer.invoke("yt-get-audio-url", videoId),
 
   /** Set whether closing the window minimizes to tray or quits the app. */
   setCloseBehavior: (behavior) =>
     ipcRenderer.invoke("set-close-behavior", behavior),
+
+  /** Read the real OS login-item state (openAtLogin). */
+  getLoginItemSettings: () =>
+    ipcRenderer.invoke("get-login-item-settings"),
+
+  /** Enable or disable opening the app at login (start on boot). */
+  setLoginItemSettings: (openAtLogin) =>
+    ipcRenderer.invoke("set-login-item-settings", { openAtLogin }),
 
   /**
    * Register (or update) all global shortcuts.
@@ -52,15 +85,95 @@ contextBridge.exposeInMainWorld("electronAPI", {
   updateTrayState: (state) =>
     ipcRenderer.send("update-tray-state", state),
 
-  /** Fetch all tracks from a Spotify playlist URL using the given credentials. */
-  spotifyFetchPlaylist: ({ playlistUrl, clientId, clientSecret }) =>
-    ipcRenderer.invoke("spotify-fetch-playlist", { playlistUrl, clientId, clientSecret }),
+  /** Check if Spotify web session is active. */
+  spotifyCheck:  () => ipcRenderer.invoke("spotify-check"),
+  /** Open Spotify login popup (email/password). */
+  spotifyLogin:        () => ipcRenderer.invoke("spotify-login"),
+  /** Extract sp_dc cookie from Chrome/Firefox (for Google-linked accounts). */
+  spotifyImportBrowser:() => ipcRenderer.invoke("spotify-import-browser"),
+  /** Save sp_dc cookie manually (paste fallback). */
+  spotifySetCookie:    ({ spDc }) => ipcRenderer.invoke("spotify-set-cookie", { spDc }),
+  /** Clear Spotify session. */
+  spotifyLogout:       () => ipcRenderer.invoke("spotify-logout"),
+  /** Fetch track list from any Spotify URL. */
+  spotifyFetch:  ({ url }) => ipcRenderer.invoke("spotify-fetch", { url }),
+  /** Check if spotDL is installed. */
+  spotdlCheck: () => ipcRenderer.invoke("spotdl-check"),
+  /** Download Spotify track URLs in parallel with spotDL. */
+  spotdlDownloadBatch: ({ tracks, outputDir, format }) =>
+    ipcRenderer.invoke("spotdl-download-batch", { tracks, outputDir, format }),
+  /** Fires when spotDL finishes a track. */
+  onSpotdlTrackDone: (cb) => {
+    const h = (_e, data) => cb(data);
+    ipcRenderer.on("spotdl-track-done", h);
+    return () => ipcRenderer.removeListener("spotdl-track-done", h);
+  },
 
-  /** Scan default music locations and return audio file info. */
-  scanLibrary: () => ipcRenderer.invoke("scan-library"),
+  /** Scan music locations and return audio file info.
+   *  Pass an array of folder paths to restrict the scan to those folders.
+   *  Pass nothing (or an empty array) to fall back to built-in defaults. */
+  scanLibrary: (folders) => ipcRenderer.invoke("scan-library", folders),
+
+  /** Abort the current in-progress scan immediately. */
+  cancelScan: () => ipcRenderer.send("cancel-scan"),
+
+  /** Subscribe to real-time scan progress. Returns an unsubscribe function. */
+  onScanProgress: (cb) => {
+    const h = (_e, data) => cb(data);
+    ipcRenderer.on("scan-progress", h);
+    return () => ipcRenderer.removeListener("scan-progress", h);
+  },
 
   /** Read a file from disk by absolute path. Returns bytes + name + size. */
   readFile: (filePath) => ipcRenderer.invoke("read-file", filePath),
+
+  /** Toggle the always-on-top mini player widget window. */
+  toggleMiniWidget: () => ipcRenderer.send("toggle-mini-widget"),
+
+  /** Push current playback state to the mini widget. */
+  updateWidgetState: (state) => ipcRenderer.send("update-widget-state", state),
+
+  /** Send a control action from the widget (play-pause / prev / next / seek). */
+  widgetAction: (action) => ipcRenderer.send("widget-action", action),
+
+  /** Hide the widget window (widget close button). */
+  widgetHide: () => ipcRenderer.send("widget-hide"),
+
+  /** Restore the widget's saved position (sent from widget localStorage). */
+  widgetInitPosition: (pos) => ipcRenderer.send("widget-init-position", pos),
+
+  /** Receive track state updates in the widget window. */
+  onWidgetState: (cb) => {
+    const h = (_e, data) => cb(data);
+    ipcRenderer.on("widget-state", h);
+    return () => ipcRenderer.removeListener("widget-state", h);
+  },
+
+  /** Receive position-moved events in the widget window (for localStorage save). */
+  onWidgetMoved: (cb) => {
+    const h = (_e, pos) => cb(pos);
+    ipcRenderer.on("widget-moved", h);
+    return () => ipcRenderer.removeListener("widget-moved", h);
+  },
+
+  /** Subscribe to widget visibility changes in the main app. */
+  onMiniWidgetVisibility: (cb) => {
+    const h = (_e, data) => cb(data);
+    ipcRenderer.on("mini-widget-visibility", h);
+    return () => ipcRenderer.removeListener("mini-widget-visibility", h);
+  },
+
+  /** Push Discord Rich Presence state from the renderer. */
+  discordRpcUpdate: (state) => ipcRenderer.send("discord-rpc-update", state),
+
+  /** Enable or disable Discord Rich Presence from the settings toggle. */
+  discordRpcSetEnabled: (enabled) => ipcRenderer.send("discord-rpc-set-enabled", enabled),
+
+  /** Push current track + playback state to OS media integrations (MPRIS / SMTC). */
+  updateOsMedia: (state) => ipcRenderer.send("update-os-media", state),
+
+  /** Enable or disable OS media integration (MPRIS / SMTC) from the settings toggle. */
+  setOsMediaEnabled: (enabled) => ipcRenderer.send("set-os-media-enabled", enabled),
 
   /** Bring the hidden window back to the foreground. */
   showWindow: () => ipcRenderer.invoke("show-window"),

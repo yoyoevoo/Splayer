@@ -73,7 +73,9 @@ export function FloatingVideoPlayer({
   useEffect(() => {
     const v = videoRef.current;
     if (!v || currentTime === undefined) return;
-    if (Math.abs(v.currentTime - currentTime) > 0.75) {
+    // Guard: don't seek while the video is still buffering — random-access reads
+    // into an unbuffered blob cause stutter on every timeupdate tick.
+    if (v.readyState >= 2 && Math.abs(v.currentTime - currentTime) > 0.75) {
       v.currentTime = currentTime;
     }
   }, [currentTime]);
@@ -115,6 +117,7 @@ export function FloatingVideoPlayer({
         key={videoUrl}
         src={videoUrl}
         muted={muted}
+        preload="auto"
         className="bg-black"
         style={{ display: "block", width: "100%", height: "calc(100% - 36px)" }}
       />

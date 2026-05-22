@@ -120,7 +120,7 @@ export function MiniPlayer({ onExpand }: MiniPlayerProps) {
         left     : pos.x,
         top      : pos.y,
         width    : MINI_W,
-        zIndex   : 9999,
+        zIndex   : 100,
         cursor   : dragging ? "grabbing" : "grab",
         userSelect: "none",
       }}
