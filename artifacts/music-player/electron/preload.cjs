@@ -163,6 +163,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("mini-widget-visibility", h);
   },
 
+  /** Open a URL in the user's default browser. */
+  openExternal: (url) => ipcRenderer.send("open-external", url),
+
   /** Push Discord Rich Presence state from the renderer. */
   discordRpcUpdate: (state) => ipcRenderer.send("discord-rpc-update", state),
 
@@ -229,4 +232,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("yt-progress-merge", handler);
     return () => ipcRenderer.removeListener("yt-progress-merge", handler);
   },
+
+  /** Export an edited audio track via ffmpeg. wavBytes is a Uint8Array of a WAV file. */
+  editorExport: ({ wavBytes, format, quality, fileName, fadeIn, fadeOut }) =>
+    ipcRenderer.invoke("editor:export", { wavBytes, format, quality, fileName, fadeIn, fadeOut }),
+
+  /** Subscribe to editor export progress events (0–100). Returns unsubscribe fn. */
+  onEditorExportProgress: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("editor:export-progress", handler);
+    return () => ipcRenderer.removeListener("editor:export-progress", handler);
+  },
+
+  /** Add an exported file to the Splayer library. */
+  editorAddToLibrary: ({ filePath }) =>
+    ipcRenderer.invoke("editor:add-to-library", { filePath }),
+
+  /** Check whether a YouTube cookies file is saved. */
+  youtubeHasCookies: () => ipcRenderer.invoke("youtube:has-cookies"),
+
+  /** Delete the saved YouTube cookies file. */
+  youtubeClearCookies: () => ipcRenderer.invoke("youtube:clear-cookies"),
+
+  /** Open a YouTube login window; exports cookies to file on close. */
+  youtubeLogin: () => ipcRenderer.invoke("youtube:login"),
 });

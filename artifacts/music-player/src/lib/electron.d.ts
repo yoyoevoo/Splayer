@@ -137,6 +137,9 @@ declare global {
       /** Register (or replace) all global keyboard shortcuts. */
       registerGlobalShortcuts: (shortcuts: Record<string, string>) => Promise<void>;
 
+      /** Open a URL in the system default browser. */
+      openExternal: (url: string) => void;
+
       /** Push playback state to the main process so the tray stays in sync. */
       updateTrayState: (state: { title: string; artist: string; isPlaying: boolean; volume: number }) => void;
 
@@ -227,6 +230,34 @@ declare global {
       onYtProgressMerge: (
         cb: (data: { percent: number }) => void,
       ) => () => void;
+
+      /** Export an edited AudioBuffer (supplied as WAV bytes) via ffmpeg. */
+      editorExport: (params: {
+        wavBytes: Uint8Array;
+        format: "mp3" | "wav" | "flac" | "ogg";
+        quality: "128" | "192" | "320";
+        fileName: string;
+        fadeIn?: number;
+        fadeOut?: number;
+      }) => Promise<{ success: true; outputPath: string } | { error: string }>;
+
+      /** Subscribe to editor export progress events (percent 0–100). Returns unsubscribe fn. */
+      onEditorExportProgress: (cb: (data: { percent: number }) => void) => () => void;
+
+      /** Add an exported file path to the Splayer library. */
+      editorAddToLibrary: (params: { filePath: string }) => Promise<{
+        success: true;
+        file: { path: string; name: string; size: number };
+      } | { error: string }>;
+
+      /** Check whether a YouTube cookies file is saved on disk. */
+      youtubeHasCookies: () => Promise<{ exists: boolean }>;
+
+      /** Delete the saved YouTube cookies file. */
+      youtubeClearCookies: () => Promise<{ success: true }>;
+
+      /** Open a YouTube sign-in BrowserWindow; exports cookies on close. */
+      youtubeLogin: () => Promise<{ success: true; count: number } | { error: string }>;
     };
   }
 }

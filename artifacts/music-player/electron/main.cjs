@@ -73,6 +73,26 @@ if (process.platform === "linux") {
   app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
+// ── Single-instance lock ──────────────────────────────────────────────────────
+// Must be called before app.whenReady(). If a second instance launches (e.g. the
+// user clicks the Windows taskbar icon while the app is already running), it quits
+// immediately and the first instance restores its window to the foreground.
+const _gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!_gotSingleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
+
+app.on("second-instance", () => {
+  // First instance receives this event when a second launch is attempted.
+  // Bring the existing window back to focus, restoring it if minimized or hidden.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible())  mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 // ── Pin userData path ─────────────────────────────────────────────────────────
 // Linux: ~/.config/splayer  |  Windows: %APPDATA%\Splayer
 const USERDATA_DIR = process.platform === "win32"
@@ -192,6 +212,17 @@ function buildTrayMenu() {
 
   return Menu.buildFromTemplate([
     {
+      label: "Show Splayer",
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          if (!mainWindow.isVisible())  mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: "separator" },
+    {
       label: "⏮  Previous",
       click: () => { if (mainWindow) mainWindow.webContents.send("tray-action", "prev"); },
     },
@@ -223,13 +254,7 @@ function buildTrayMenu() {
     },
     { type: "separator" },
     {
-      label: "🖥  Open Splayer",
-      click: () => {
-        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-      },
-    },
-    {
-      label: "❌ Quit",
+      label: "Quit",
       click: () => { isQuitting = true; app.quit(); },
     },
   ]);
@@ -451,8 +476,23 @@ function createTray() {
     tray = new Tray(icon);
     tray.setToolTip("Splayer");
     tray.setContextMenu(buildTrayMenu());
+    // Single-click restores the window on Windows (and Linux, since on Linux
+    // single-click also fires before the context menu on most desktops).
+    // On macOS the context menu opens on click, so we skip this there.
+    tray.on("click", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible())  mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+
     tray.on("double-click", () => {
-      if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible())  mainWindow.show();
+        mainWindow.focus();
+      }
     });
 
     tray.on("scroll", (_event, delta, direction) => {
@@ -473,6 +513,10 @@ let embedServerPort = 0;
 
 const SAFE_VIDEO_ID = /^[A-Za-z0-9_-]{1,20}$/;
 
+// Path for the YouTube cookies file exported from our login window.
+// yt-dlp reads this with --cookies when it exists.
+const YT_COOKIES_PATH = path.join(app.getPath("userData"), "yt-cookies.txt");
+
 // CDN URL cache — yt-dlp --get-url runs once per video; result reused for all
 // Range requests (seek, buffer refill). YouTube CDN URLs expire ~6 h; 5 h TTL.
 const _cdnCache = new Map(); // videoId → { url, ts }
@@ -482,29 +526,52 @@ const CDN_TTL   = 5 * 60 * 60 * 1000;
 // Populated by /stream, drained by /kill-stream and /kill-all-streams.
 const _activeStreams = new Map();
 
-// Single-attempt yt-dlp with a hard timeout — no multi-browser retry loop.
+// Single-attempt yt-dlp with a hard timeout — retries with mweb on bot detection.
 function _ytDlpGetUrl(videoId) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(getYtDlpPath(), [
-      "-f", "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
-      "--get-url", "--no-playlist", "--no-warnings", "--no-cache-dir",
-      `https://www.youtube.com/watch?v=${videoId}`,
-    ], { env: { ...process.env } });
+  function attempt(extraArgs) {
+    return new Promise((resolve, reject) => {
+      const cookieArgs = fsSync.existsSync(YT_COOKIES_PATH)
+        ? ["--cookies", YT_COOKIES_PATH]
+        : [];
+      const proc = spawn(getYtDlpPath(), [
+        ...getYtDlpPlatformArgs(),
+        ...cookieArgs,
+        ...(extraArgs || []),
+        "-f", "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+        "--get-url", "--no-playlist", "--no-warnings", "--no-cache-dir",
+        `https://www.youtube.com/watch?v=${videoId}`,
+      ], { env: { ...process.env } });
 
-    const chunks = [];
-    proc.stdout.on("data", (c) => chunks.push(Buffer.from(c)));
-    proc.stderr.on("data", () => {});
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(`yt-dlp exit ${code}`));
-      const url = Buffer.concat(chunks).toString("utf8").trim().split("\n")[0];
-      url ? resolve(url) : reject(new Error("no URL returned"));
+      const chunks = [];
+      let errText = "";
+      proc.stdout.on("data", (c) => chunks.push(Buffer.from(c)));
+      proc.stderr.on("data", (d) => { errText += d.toString(); });
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          const msg = errText.trim().split("\n").pop() || `yt-dlp exit ${code}`;
+          return reject(new Error(msg));
+        }
+        const url = Buffer.concat(chunks).toString("utf8").trim().split("\n")[0];
+        url ? resolve(url) : reject(new Error("no URL returned"));
+      });
+      const timer = setTimeout(() => {
+        try { proc.kill("SIGKILL"); } catch (_) {}
+        reject(new Error("yt-dlp timeout"));
+      }, 15000);
     });
-    const timer = setTimeout(() => {
-      try { proc.kill("SIGKILL"); } catch (_) {}
-      reject(new Error("yt-dlp timeout"));
-    }, 15000);
+  }
+
+  // Primary: default client (yt-dlp chooses best, typically ANDROID_VR)
+  return attempt(null).catch((err) => {
+    if (_isBotError(err.message)) {
+      console.log("[stream] bot detection, retrying with mweb client");
+      return attempt(["--extractor-args", "youtube:player_client=mweb", "--user-agent", YT_IOS_USER_AGENT]).catch(() => {
+        throw new Error("YouTube is blocking this stream. Try again in a few minutes.");
+      });
+    }
+    throw err;
   });
 }
 
@@ -627,6 +694,7 @@ const embedServer = http.createServer((req, res) => {
   // since the video player uses a BrowserView with relaxed CSP).
   if (parsedUrl.pathname === "/video-stream") {
     const proc = spawn(getYtDlpPath(), [
+      ...getYtDlpPlatformArgs(),
       "-f", "best[height<=480][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best",
       "--no-playlist", "--no-warnings", "-o", "-",
       `https://www.youtube.com/watch?v=${vid}`,
@@ -746,6 +814,19 @@ function createWindow() {
     win.on("maximize",   () => win.webContents.send("window-maximized"));
     win.on("unmaximize", () => win.webContents.send("window-unmaximized"));
   }
+
+  // Intercept the OS-level close event (Alt+F4, native X button, etc.).
+  // When close-behavior is "tray", hide the window instead of destroying it so
+  // the app stays resident and the tray icon remains active. The custom React
+  // titlebar sends "window-close" via IPC, which is handled separately below,
+  // but this handler catches everything else the OS can throw at us.
+  win.on("close", (event) => {
+    if (!isQuitting && closeBehavior === "tray") {
+      event.preventDefault();
+      win.hide();
+    }
+    // If isQuitting is true (e.g. tray "Quit" was clicked), let the close proceed.
+  });
 
   // Always start maximised
   win.maximize();
@@ -909,12 +990,17 @@ ipcMain.handle("yt-search", async (_event, query) => {
     const searchQuery = `ytsearch8:${query.trim()}`;
     const args = buildYtDlpArgs([searchQuery, "--flat-playlist", "--dump-json", "--no-warnings"], null);
     let stdout = "";
+    let spawnErr = null;
     await new Promise((resolve) => {
       const proc = spawn(ytBin, args, { env: { ...process.env } });
       proc.stdout.on("data", (d) => { stdout += d.toString(); });
       proc.on("close", resolve);
-      proc.on("error", () => resolve());
+      proc.on("error", (e) => { spawnErr = e; resolve(); });
     });
+    if (spawnErr) {
+      console.error("[yt-search] spawn error:", spawnErr.message);
+      return { error: `yt-dlp not found: ${spawnErr.message}` };
+    }
     return stdout.split("\n").filter(Boolean).map((line) => {
       try { return JSON.parse(line); } catch { return null; }
     }).filter(Boolean).map((v) => ({
@@ -941,21 +1027,28 @@ function getYtDlpCookieBrowsers() {
   return ["chrome", "firefox"]; // linux
 }
 
+// Used only in the mweb bot-detection retry paths — NOT as a default client.
+// iOS player_client=ios,web breaks ytsearch: entirely (returns nothing).
+const YT_IOS_USER_AGENT = "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)";
+
 function getYtDlpPlatformArgs() {
-  if (process.platform === "win32") {
-    return [
-      "--user-agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      "--sleep-interval",
-      "1",
-    ];
+  const denoBin = getDenoBinPath();
+  if (fsSync.existsSync(denoBin)) {
+    return ["--js-runtimes", `deno:${denoBin}`];
   }
   return [];
 }
 
+function _isBotError(msg) {
+  const lower = (msg || "").toLowerCase();
+  return lower.includes("sign in to confirm") || lower.includes("bot");
+}
+
 function buildYtDlpArgs(baseArgs, cookieBrowser) {
   const args = [...getYtDlpPlatformArgs()];
-  if (cookieBrowser) {
+  if (cookieBrowser === "__file__") {
+    args.push("--cookies", YT_COOKIES_PATH);
+  } else if (cookieBrowser) {
     args.push("--cookies-from-browser", cookieBrowser);
   }
   args.push(...baseArgs);
@@ -963,11 +1056,26 @@ function buildYtDlpArgs(baseArgs, cookieBrowser) {
 }
 
 function getYtDlpPath() {
-  const exeName    = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  if (process.platform !== "win32") {
+    // On Linux/macOS, prefer a bundled binary if present, otherwise fall back to system PATH.
+    const bundled = path.join(
+      app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "resources"),
+      "yt-dlp",
+    );
+    return fsSync.existsSync(bundled) ? bundled : "yt-dlp";
+  }
   const resourcesDir = app.isPackaged
     ? process.resourcesPath
     : path.join(__dirname, "..", "resources");
-  return path.join(resourcesDir, exeName);
+  return path.join(resourcesDir, "yt-dlp.exe");
+}
+
+function getDenoBinPath() {
+  const name = process.platform === "win32" ? "deno.exe" : "deno";
+  const resourcesDir = app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, "..", "resources");
+  return path.join(resourcesDir, name);
 }
 
 function getFfmpegPath() {
@@ -1018,7 +1126,6 @@ function runYtDlp(args, onStderr) {
       );
       proc.on("close", (code) => {
         if (code !== 0) {
-          // Extract the most meaningful error line from stderr
           const errLine =
             errText
               .split("\n")
@@ -1037,22 +1144,35 @@ function runYtDlp(args, onStderr) {
 
   return (async () => {
     let lastErr = null;
-
-    for (const browser of browsers) {
+    // Cookies file (from YouTube login window) is tried first — highest priority.
+    const attempts = [
+      ...(fsSync.existsSync(YT_COOKIES_PATH) ? ["__file__"] : []),
+      ...browsers,
+      null, // last fallback: no cookies
+    ];
+    for (const attempt of attempts) {
       try {
-        return await runAttempt(buildYtDlpArgs(args, browser));
+        return await runAttempt(buildYtDlpArgs(args, attempt));
       } catch (err) {
         lastErr = err;
       }
     }
-
-    // Last fallback without cookies in case browser extraction is unavailable.
-    try {
-      return await runAttempt(buildYtDlpArgs(args, null));
-    } catch (err) {
-      lastErr = err;
+    // Bot detection retry with mweb client (bypasses ios,web from platform args)
+    if (lastErr && _isBotError(lastErr.message)) {
+      console.log("[yt-dlp] bot detection, retrying with mweb client");
+      const cookieArgs = fsSync.existsSync(YT_COOKIES_PATH) ? ["--cookies", YT_COOKIES_PATH] : [];
+      const mwebArgs = [
+        ...cookieArgs,
+        "--extractor-args", "youtube:player_client=mweb",
+        "--user-agent", YT_IOS_USER_AGENT,
+        ...args,
+      ];
+      try {
+        return await runAttempt(mwebArgs);
+      } catch {
+        throw new Error("YouTube is blocking this download. Try again in a few minutes.");
+      }
     }
-
     throw lastErr || new Error("yt-dlp failed");
   })();
 }
@@ -1410,24 +1530,36 @@ function runYtDlpFile(args, onStderr) {
 
   return (async () => {
     let lastErr = null;
-
-    for (const browser of browsers) {
+    const attempts = [
+      ...(fsSync.existsSync(YT_COOKIES_PATH) ? ["__file__"] : []),
+      ...browsers,
+      null,
+    ];
+    for (const attempt of attempts) {
       try {
-        await runAttempt(buildYtDlpArgs(args, browser));
+        await runAttempt(buildYtDlpArgs(args, attempt));
         return;
       } catch (err) {
         lastErr = err;
       }
     }
-
-    // Last fallback without cookies in case browser extraction is unavailable.
-    try {
-      await runAttempt(buildYtDlpArgs(args, null));
-      return;
-    } catch (err) {
-      lastErr = err;
+    // Bot detection retry with mweb client
+    if (lastErr && _isBotError(lastErr.message)) {
+      console.log("[yt-dlp] bot detection, retrying with mweb client");
+      const cookieArgs = fsSync.existsSync(YT_COOKIES_PATH) ? ["--cookies", YT_COOKIES_PATH] : [];
+      const mwebArgs = [
+        ...cookieArgs,
+        "--extractor-args", "youtube:player_client=mweb",
+        "--user-agent", YT_IOS_USER_AGENT,
+        ...args,
+      ];
+      try {
+        await runAttempt(mwebArgs);
+        return;
+      } catch {
+        throw new Error("YouTube is blocking this download. Try again in a few minutes.");
+      }
     }
-
     throw lastErr || new Error("yt-dlp failed");
   })();
 }
@@ -2524,6 +2656,10 @@ function ensureAppDirs() {
 
 ipcMain.handle("get-app-paths", () => APP_DIRS);
 
+ipcMain.on("open-external", (_event, url) => {
+  if (_isSafeRemoteUrl(url)) shell.openExternal(url);
+});
+
 // ── OS Media Integration (MPRIS on Linux, SMTC on Windows) ───────────────────
 
 let _osMediaEnabled = true;  // can be toggled from Settings
@@ -2674,14 +2810,13 @@ ipcMain.on("set-os-media-enabled", (_event, enabled) => {
 });
 
 // ── Discord Rich Presence ─────────────────────────────────────────────────────
-// Set DISCORD_CLIENT_ID in your .env to your own Discord application ID.
-// Get one at https://discord.com/developers/applications — create an app,
-// then upload art assets under "Rich Presence → Art Assets":
+// Replace SPLAYER_DISCORD_CLIENT_ID with your application's ID from
+// https://discord.com/developers/applications once you have created it.
+// Upload art assets under "Rich Presence → Art Assets":
 //   • "splayer_logo"  – the Splayer icon (large image)
 //   • "playing"       – a small play icon  (small image, optional)
 //   • "paused"        – a small pause icon (small image, optional)
-// Leave unset to disable Discord Rich Presence entirely.
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID ?? "";
+const DISCORD_CLIENT_ID = "1505306091443978270";
 
 let _drpcClient      = null;
 let _drpcReady       = false;
@@ -2733,7 +2868,7 @@ function _drpcSetActivity(state) {
 }
 
 function _drpcConnect() {
-  if (!DISCORD_CLIENT_ID) return; // disabled — no client ID configured
+  if (!DISCORD_CLIENT_ID || DISCORD_CLIENT_ID === "SPLAYER_DISCORD_CLIENT_ID") return;
   if (_drpcConnecting) return;   // prevent concurrent connection attempts
   if (_drpcRetryTimer) { clearTimeout(_drpcRetryTimer); _drpcRetryTimer = null; }
   let DiscordRPC;
@@ -2794,10 +2929,234 @@ ipcMain.on("discord-rpc-set-enabled", (_event, enabled) => {
   }
 });
 
+// ── IPC: Splayer Editor — encode audio with ffmpeg ────────────────────────────
+ipcMain.handle("editor:export", async (event, { wavBytes, format, quality, fileName, fadeIn, fadeOut }) => {
+  // ── Log raw received args immediately ──────────────────────────────────────
+  console.log("EXPORT ARGS:", { fadeIn, fadeOut, format, fileName, quality,
+    wavBytesType: wavBytes?.constructor?.name,
+    wavBytesLen:  wavBytes?.length ?? wavBytes?.byteLength ?? "?" });
+
+  const validFormats = new Set(["mp3", "wav", "flac", "ogg"]);
+  const validQualities = new Set(["128", "192", "320"]);
+
+  if (!validFormats.has(format)) return { error: "Invalid format" };
+  if (format === "mp3" && !validQualities.has(quality)) return { error: "Invalid quality" };
+  if (!wavBytes) return { error: "No audio data" };
+
+  const safeName = (typeof fileName === "string" ? fileName : "export")
+    .replace(/[^a-zA-Z0-9_\- ]/g, "")
+    .trim() || "export";
+  const exportsDir = path.join(os.homedir(), "Music", "Splayer", "Exports");
+  await fs.mkdir(exportsDir, { recursive: true });
+  const outputPath = path.join(exportsDir, `${safeName}.${format}`);
+
+  const tmpWav = path.join(os.tmpdir(), `splayer_edit_${Date.now()}.wav`);
+
+  try {
+    const buf = Buffer.from(wavBytes instanceof Uint8Array ? wavBytes : new Uint8Array(Object.values(wavBytes)));
+    if (buf.length > _MAX_WRITE_BYTES) return { error: "Audio too large to export" };
+    await fs.writeFile(tmpWav, buf);
+
+    // Compute audio duration from WAV header bytes for fade-out start time.
+    // WAV fmt chunk: offset 22 = channels (uint16), 24 = sample rate (uint32),
+    // data chunk: offset 40 = data size in bytes (uint32). 16-bit PCM assumed.
+    let audioDurSecs = 0;
+    if (buf.length >= 44) {
+      const sr = buf.readUInt32LE(24);
+      const nc = buf.readUInt16LE(22);
+      const dataSize = buf.readUInt32LE(40);
+      if (sr > 0 && nc > 0) audioDurSecs = dataSize / (sr * nc * 2);
+    }
+    console.log("WAV DURATION:", audioDurSecs.toFixed(3) + "s",
+      `(buf=${buf.length} bytes, sr=${buf.readUInt32LE(24)} nc=${buf.readUInt16LE(22)})`);
+
+    // Build afade filter chain
+    const fi = typeof fadeIn  === "number" && isFinite(fadeIn)  ? Math.max(0, fadeIn)  : 0;
+    const fo = typeof fadeOut === "number" && isFinite(fadeOut) ? Math.max(0, fadeOut) : 0;
+
+    const filters = [];
+    if (fi > 0) {
+      filters.push(`afade=t=in:st=0:d=${fi.toFixed(3)}`);
+    }
+    if (fo > 0) {
+      // Clamp start time to 0 so it's valid even when fo >= audioDurSecs
+      const foStart = Math.max(0, audioDurSecs - fo);
+      filters.push(`afade=t=out:st=${foStart.toFixed(3)}:d=${fo.toFixed(3)}`);
+    }
+
+    // Build the complete args array BEFORE logging so the logged command is exact
+    const ffArgs = ["-y", "-i", tmpWav];
+    if (filters.length) ffArgs.push("-af", filters.join(","));
+    if (format === "mp3") {
+      ffArgs.push("-codec:a", "libmp3lame", "-b:a", `${quality}k`);
+    } else if (format === "flac") {
+      ffArgs.push("-codec:a", "flac");
+    } else if (format === "ogg") {
+      ffArgs.push("-codec:a", "libvorbis");
+    }
+    ffArgs.push(outputPath);
+
+    // Log AFTER outputPath is appended so the command is complete
+    console.log("FFMPEG CMD:", [getFfmpegPath(), ...ffArgs].join(" "));
+
+    await new Promise((resolve, reject) => {
+      const proc = spawn(getFfmpegPath(), ffArgs);
+      let stderr = "";
+      let totalSecs = 0;
+
+      proc.stderr.on("data", (d) => {
+        const text = d.toString();
+        stderr += text;
+
+        if (!totalSecs) {
+          const m = text.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/);
+          if (m) totalSecs = parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
+        }
+
+        const tm = text.match(/time=\s*(\d+):(\d+):(\d+\.?\d*)/);
+        if (tm && totalSecs > 0) {
+          const cur = parseInt(tm[1]) * 3600 + parseInt(tm[2]) * 60 + parseFloat(tm[3]);
+          const pct = Math.min(99, Math.round((cur / totalSecs) * 100));
+          try { event.sender.send("editor:export-progress", { percent: pct }); } catch {}
+        }
+      });
+      proc.stdout.on("data", () => {});
+      proc.on("error", (e) => reject(new Error(`ffmpeg error: ${e.message}`)));
+      proc.on("close", (code) => {
+        console.log("FFMPEG EXIT CODE:", code);
+        if (code !== 0) {
+          console.error("FFMPEG STDERR:\n" + stderr.slice(-500));
+          reject(new Error("ffmpeg failed: " + stderr.slice(-300)));
+        } else {
+          // Log any warnings even on success
+          const warnings = stderr.split("\n").filter(l => /error|warning/i.test(l) && !/encoder|muxing|stream/i.test(l));
+          if (warnings.length) console.log("FFMPEG WARNINGS:", warnings.join("\n"));
+          resolve();
+        }
+      });
+    });
+
+    try { event.sender.send("editor:export-progress", { percent: 100 }); } catch {}
+    return { success: true, outputPath };
+  } catch (e) {
+    return { error: e.message };
+  } finally {
+    try { await fs.unlink(tmpWav); } catch {}
+  }
+});
+
+// ── IPC: Splayer Editor — add exported file to library ────────────────────────
+ipcMain.handle("editor:add-to-library", async (_event, { filePath }) => {
+  if (!_isStr(filePath, _MAX_PATH_LEN) || !_isAllowedPath(filePath)) return { error: "Invalid path" };
+  try {
+    await fs.access(filePath);
+    const stat = await fs.stat(filePath);
+    const name = path.basename(filePath);
+    return { success: true, file: { path: filePath, name, size: stat.size } };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
+// ── IPC: YouTube login (BrowserWindow → Netscape cookies file) ────────────────
+ipcMain.handle("youtube:has-cookies", () => ({
+  exists: fsSync.existsSync(YT_COOKIES_PATH),
+}));
+
+ipcMain.handle("youtube:clear-cookies", async () => {
+  try { await fs.unlink(YT_COOKIES_PATH); } catch {}
+  return { success: true };
+});
+
+ipcMain.handle("youtube:login", () =>
+  new Promise((resolve) => {
+    const loginWin = new BrowserWindow({
+      width: 960,
+      height: 720,
+      title: "Sign in to YouTube — Splayer",
+      autoHideMenuBar: true,
+      webPreferences: {
+        partition: "persist:yt-login",
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+    loginWin.loadURL(
+      "https://accounts.google.com/ServiceLogin?service=youtube&hl=en",
+    );
+
+    let handled = false;
+    async function finish() {
+      if (handled) return;
+      handled = true;
+      try {
+        const ses = loginWin.webContents.session;
+        const allCookies = [];
+        const seen = new Set();
+        for (const url of [
+          "https://www.youtube.com",
+          "https://accounts.google.com",
+          "https://google.com",
+        ]) {
+          for (const c of await ses.cookies.get({ url })) {
+            const key = `${c.domain}|${c.name}`;
+            if (!seen.has(key)) { seen.add(key); allCookies.push(c); }
+          }
+        }
+        if (allCookies.length === 0) {
+          resolve({ error: "No cookies found — please sign in to YouTube first, then close this window." });
+          return;
+        }
+        const lines = ["# Netscape HTTP Cookie File", "# Generated by Splayer", ""];
+        for (const c of allCookies) {
+          const dom = c.domain.startsWith(".") ? c.domain : "." + c.domain;
+          const cookiePath = c.path || "/";
+          const secure = c.secure ? "TRUE" : "FALSE";
+          const expiry = c.expirationDate ? Math.floor(c.expirationDate) : "0";
+          lines.push(`${dom}\tTRUE\t${cookiePath}\t${secure}\t${expiry}\t${c.name}\t${c.value}`);
+        }
+        await fs.writeFile(YT_COOKIES_PATH, lines.join("\n"), "utf8");
+        resolve({ success: true, count: allCookies.length });
+      } catch (e) {
+        resolve({ error: e.message });
+      } finally {
+        try { loginWin.destroy(); } catch {}
+      }
+    }
+
+    loginWin.on("close", (event) => {
+      event.preventDefault();
+      finish();
+    });
+  }),
+);
+
+// Silently self-update yt-dlp in the background on every startup
+function _ytDlpSelfUpdate() {
+  try {
+    const ytBin = getYtDlpPath();
+    const proc = spawn(ytBin, ["--update"], { env: { ...process.env } });
+    let out = "";
+    proc.stdout.on("data", (d) => { out += d.toString(); });
+    proc.stderr.on("data", (d) => { out += d.toString(); });
+    proc.on("close", (code) => {
+      const summary = out.trim().split("\n").pop() || "(no output)";
+      if (code === 0) console.log("[yt-dlp] self-update:", summary);
+      else console.warn("[yt-dlp] self-update failed (exit", code + "):", summary);
+    });
+    proc.on("error", (e) => console.warn("[yt-dlp] self-update error:", e.message));
+  } catch (e) {
+    console.warn("[yt-dlp] self-update launch failed:", e.message);
+  }
+}
+
 app.whenReady().then(() => {
   ensureAppDirs();
   createWindow();
   createTray();
+
+  // Keep yt-dlp current — runs async, does not block startup
+  _ytDlpSelfUpdate();
 
   // D-Bus scroll monitor — intercepts KDE's Scroll method calls on Linux
   setupTrayScrollMonitor();
@@ -2827,8 +3186,12 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    isQuitting = true;
+  // On macOS apps conventionally stay alive until the user explicitly quits.
+  // On Windows/Linux, only quit here if isQuitting is already set — meaning the
+  // user chose "Quit" from the tray or some other intentional exit path.
+  // When the window is hidden to tray, the 'close' event is prevented so this
+  // event never fires, but we guard with isQuitting to be safe.
+  if (process.platform !== "darwin" && isQuitting) {
     app.quit();
   }
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, RefreshCw, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, LogIn, LogOut, RefreshCw, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -77,6 +77,8 @@ function DownloadQueueDialog({
 }) {
   const { downloads, cancelDownload, startDownload } = usePlayer();
   const [history, setHistory] = useState<DownloadRecord[]>([]);
+  const [ytSignedIn, setYtSignedIn] = useState(false);
+  const [ytBusy, setYtBusy] = useState(false);
 
   // Refresh history whenever downloads state changes (a completion adds to localStorage)
   useEffect(() => {
@@ -85,8 +87,32 @@ function DownloadQueueDialog({
 
   // Also refresh immediately when the dialog opens
   useEffect(() => {
-    if (open) setHistory(readDownloadHistory().slice(0, 20));
+    if (open) {
+      setHistory(readDownloadHistory().slice(0, 20));
+      window.electronAPI?.youtubeHasCookies?.().then((r) => setYtSignedIn(r.exists));
+    }
   }, [open]);
+
+  async function handleYtSignIn() {
+    setYtBusy(true);
+    try {
+      const result = await window.electronAPI?.youtubeLogin?.();
+      if (result && "success" in result) setYtSignedIn(true);
+      else if (result && "error" in result) alert(result.error);
+    } finally {
+      setYtBusy(false);
+    }
+  }
+
+  async function handleYtSignOut() {
+    setYtBusy(true);
+    try {
+      await window.electronAPI?.youtubeClearCookies?.();
+      setYtSignedIn(false);
+    } finally {
+      setYtBusy(false);
+    }
+  }
 
   const activeDownloads = downloads.filter(
     (d) => d.status === "pending" || d.status === "downloading",
@@ -193,6 +219,32 @@ function DownloadQueueDialog({
             </div>
           )}
         </div>
+
+        {/* ── YouTube account strip ── */}
+        {window.electronAPI?.youtubeLogin && (
+          <div className="px-5 py-2.5 border-t border-card-border/40 flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className={cn(
+                "w-1.5 h-1.5 rounded-full shrink-0",
+                ytSignedIn ? "bg-green-500" : "bg-muted-foreground/40",
+              )} />
+              <span className="text-[10px] text-muted-foreground truncate">
+                {ytSignedIn
+                  ? "Signed in to YouTube"
+                  : "Not signed in — downloads may fail"}
+              </span>
+            </div>
+            <button
+              onClick={ytSignedIn ? handleYtSignOut : handleYtSignIn}
+              disabled={ytBusy}
+              className="shrink-0 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            >
+              {ytSignedIn
+                ? <><LogOut className="w-3 h-3" />Sign out</>
+                : <><LogIn  className="w-3 h-3" />{ytBusy ? "Opening…" : "Sign in"}</>}
+            </button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -278,6 +330,7 @@ function FailedDownloadRow({
   onRetry: () => void;
   onDismiss: () => void;
 }) {
+  const isBotError = /sign in|not a bot|cookies|bot detection/i.test(dl.errorMsg ?? "");
   return (
     <div className="flex items-center gap-3">
       <div className="w-10 h-7 rounded bg-destructive/10 border border-destructive/20 shrink-0 flex items-center justify-center">
@@ -286,7 +339,7 @@ function FailedDownloadRow({
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium truncate">{dl.title}</p>
         <p className="text-[10px] text-destructive truncate mt-0.5">
-          {dl.errorMsg ?? "Download failed"}
+          {isBotError ? "YouTube requires sign-in — use the Sign in button below" : (dl.errorMsg ?? "Download failed")}
         </p>
       </div>
       <button

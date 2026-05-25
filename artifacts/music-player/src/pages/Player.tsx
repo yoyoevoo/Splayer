@@ -24,6 +24,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DownloadQueueButton } from "@/components/DownloadQueuePanel";
+import { EditorPage } from "@/components/EditorPage";
+import type { Track } from "@/lib/types";
 
 
 function useWindowHeight() {
@@ -70,6 +72,7 @@ export default function Player() {
     cycleRepeat,
   } = usePlayer();
 
+  const [editorTrack,    setEditorTrack]    = useState<Track | null>(null);
   const [shortcutsOpen,   setShortcutsOpen]   = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [settingsOpen,   setSettingsOpen]   = useState(false);
@@ -383,6 +386,7 @@ export default function Player() {
                     onOpenSpotify={() => setSpotifyOpen(true)}
                     miniMode={miniMode}
                     onToggleMini={() => setMiniMode((m) => !m)}
+                    onOpenEditor={(track) => setEditorTrack(track)}
                   />
                 </ErrorBoundary>
               </div>
@@ -426,6 +430,14 @@ export default function Player() {
         multiple className="hidden" onChange={onChange}
       />
       <input ref={folderRef} type="file" multiple className="hidden" onChange={onChange} />
+
+      {/* Editor page — rendered as a full-screen overlay */}
+      {editorTrack && (
+        <EditorPage
+          track={editorTrack}
+          onClose={() => setEditorTrack(null)}
+        />
+      )}
     </div>
   );
 }

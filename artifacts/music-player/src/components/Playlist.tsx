@@ -22,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   ScanSearch,
+  Scissors,
   Search,
   Settings,
   Tags,
@@ -98,6 +99,7 @@ interface PlaylistProps {
   onOpenSpotify?: () => void;
   miniMode?: boolean;
   onToggleMini?: () => void;
+  onOpenEditor?: (track: Track) => void;
 }
 
 export function Playlist({
@@ -111,6 +113,7 @@ export function Playlist({
   onOpenSpotify,
   miniMode,
   onToggleMini,
+  onOpenEditor,
 }: PlaylistProps = {}) {
   const [view, setView] = useState<View>({ kind: "library" });
   const { animatedTransitions, effectiveReduceMotion } = useTheme();
@@ -196,6 +199,7 @@ export function Playlist({
             aria-label="Shortcuts">
             <Keyboard className="w-4 h-4" />
           </Button>
+          {onOpenEditor && <EditorSidebarButton onOpenEditor={onOpenEditor} />}
         </div>
       )}
       <div className="px-3 pt-0 pb-1 border-b border-card-border">
@@ -282,7 +286,7 @@ export function Playlist({
           exit={shouldAnimate ? { opacity: 0, y: -4 } : { opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
-          {view.kind === "library" && <LibraryView />}
+          {view.kind === "library" && <LibraryView onOpenEditor={onOpenEditor} />}
           {view.kind === "queue" && <QueueView />}
           {view.kind === "podcasts" && <PodcastsView />}
           {view.kind === "books" && <BooksView />}
@@ -310,7 +314,24 @@ export function Playlist({
   );
 }
 
-function LibraryView() {
+function EditorSidebarButton({ onOpenEditor }: { onOpenEditor: (track: Track) => void }) {
+  const { currentTrack } = usePlayer();
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      onClick={() => { if (currentTrack) onOpenEditor(currentTrack); }}
+      disabled={!currentTrack}
+      className="h-8 w-8 text-muted-foreground"
+      aria-label="Open in Editor"
+      title={currentTrack ? `Edit "${currentTrack.title}" in Splayer Editor` : "Play a track to edit it"}
+    >
+      <Scissors className="w-4 h-4" />
+    </Button>
+  );
+}
+
+function LibraryView({ onOpenEditor }: { onOpenEditor?: (track: Track) => void }) {
   const {
     tracks,
     playlists,
@@ -733,6 +754,15 @@ function LibraryView() {
                         <FolderOpen className="w-4 h-4 mr-2" />
                         Show in Folder
                       </ContextMenuItem>
+                      {onOpenEditor && (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem onClick={() => onOpenEditor(t)}>
+                            <Scissors className="w-4 h-4 mr-2" />
+                            Edit in Splayer Editor
+                          </ContextMenuItem>
+                        </>
+                      )}
                       <ContextMenuSeparator />
                       <ContextMenuItem
                         onClick={() => removeTrack(t.id)}
