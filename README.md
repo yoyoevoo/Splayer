@@ -66,6 +66,16 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 - Choose MP3 or MP4 and pick the quality
 - Import and bulk download Spotify playlists
 
+**Audio Editor**
+- Trim the start and end of any track
+- Cut out a section of a song
+- Merge two tracks together
+- Fade In / Fade Out with adjustable duration (0–10s)
+- Export to MP3, WAV, FLAC, or OGG
+- Full undo / redo (Ctrl+Z)
+- Original files are never modified — exports go to ~/Music/Splayer/Exports/
+- Open from right-click on any track or the scissors icon in the sidebar
+
 **Podcasts & Audiobooks**
 - Subscribe via RSS or YouTube channel
 - Tracks your progress per episode and chapter
@@ -95,15 +105,15 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 
 | Platform | File | Notes |
 |----------|------|-------|
-| **Linux** | `Splayer-0.0.0.AppImage` | Works on any distro, no install needed |
+| **Linux** | `Splayer-0.1.0.AppImage` | Works on any distro, no install needed |
 | **Windows** | `Splayer_Setup.exe` | Run the installer |
 
 👉 **[Download latest release](https://github.com/yoyoevoo/Splayer/releases/latest)**
 
 **Linux setup:**
 ```bash
-chmod +x Splayer-0.0.0.AppImage
-./Splayer-0.0.0.AppImage
+chmod +x Splayer-0.1.0.AppImage
+./Splayer-0.1.0.AppImage
 ```
 
 ---
