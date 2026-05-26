@@ -169,6 +169,7 @@
   "dependencies": {
     "@capacitor-community/http": "^1.4.1",
     "@capacitor/android": "^8.3.1",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/core": "^8.3.1",
     "@capacitor/filesystem": "^8.1.2",
     "@distube/ytdl-core": "^4.16.12",
