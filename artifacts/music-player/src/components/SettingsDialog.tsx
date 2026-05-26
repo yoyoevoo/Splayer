@@ -1,5 +1,16 @@
 import { useState, useRef, useEffect } from "react";
-import { platformAPI } from "@/lib/platform-api";
+import { Browser } from "@capacitor/browser";
+import { platformAPI, currentPlatform } from "@/lib/platform-api";
+
+const isAndroid = currentPlatform === "android";
+
+async function openUrl(url: string) {
+  if (isAndroid) {
+    await Browser.open({ url });
+  } else {
+    (platformAPI as any)?.openExternal?.(url);
+  }
+}
 import { Archive, Download, FolderOpen, Monitor, Settings, Upload } from "lucide-react";
 import {
   Dialog,
@@ -696,7 +707,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => platformAPI?.openExternal?.("https://discord.gg/BDQMKcGwkD")}
+                onClick={() => openUrl("https://discord.gg/bB7Y2SSaWR")}
                 className="absolute right-10 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 aria-label="Join our Discord"
               >
@@ -828,30 +839,34 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
         {/* ── Behavior tab ── */}
         {tab === "behavior" && (
           <div className="py-1 space-y-5">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                App Behavior
-              </p>
-              <div className="space-y-5">
-                <StartOnBootSection />
+            {!isAndroid && (
+              <>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    App Behavior
+                  </p>
+                  <div className="space-y-5">
+                    <StartOnBootSection />
+                    <hr className="border-card-border" />
+                    <CloseBehaviorSection />
+                  </div>
+                </div>
                 <hr className="border-card-border" />
-                <CloseBehaviorSection />
-              </div>
-            </div>
-            <hr className="border-card-border" />
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                OS Media
-              </p>
-              <OsMediaSection />
-            </div>
-            <hr className="border-card-border" />
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                Discord
-              </p>
-              <DiscordSection />
-            </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    OS Media
+                  </p>
+                  <OsMediaSection />
+                </div>
+                <hr className="border-card-border" />
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    Discord
+                  </p>
+                  <DiscordSection />
+                </div>
+              </>
+            )}
           </div>
         )}
 
