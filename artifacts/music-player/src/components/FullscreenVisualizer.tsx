@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, BarChart2, Flame, Gauge, Pause, Play, SkipBack, SkipForward, Sparkles, Wand2, X, Zap } from "lucide-react";
 import { usePlayer } from "@/lib/player-context";
+import { currentPlatform } from "@/lib/platform-api";
 import { trackCoverUrl } from "@/lib/types";
 import { AlbumCover } from "./AlbumCover";
 import { cn } from "@/lib/utils";
@@ -97,7 +98,7 @@ type Particle = { x: number; y: number; vx: number; vy: number; baseSpeed: numbe
 interface Props { onClose: () => void }
 
 export function FullscreenVisualizer({ onClose }: Props) {
-  const { currentTrack, isPlaying, analyserRef, togglePlay, next, prev } = usePlayer();
+  const { currentTrack, isPlaying, analyserRef, togglePlay, next, prev, setFsVizOpen } = usePlayer();
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const isPlayingRef = useRef(isPlaying);
@@ -145,6 +146,12 @@ export function FullscreenVisualizer({ onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // ── Signal Player.tsx to hide the transport bar while fullscreen ─────────
+  useEffect(() => {
+    setFsVizOpen(true);
+    return () => setFsVizOpen(false);
+  }, [setFsVizOpen]);
+
   // ── RAF draw loop ─────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -173,6 +180,10 @@ export function FullscreenVisualizer({ onClose }: Props) {
 
       ctx.clearRect(0, 0, w, h);
 
+      const maxDrawH = h;
+      const barClipTop = 0;
+      const barMaxH    = h;
+
       if (now - lastHslRead > 1000) {
         cachedHsl   = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim();
         lastHslRead = now;
@@ -194,8 +205,17 @@ export function FullscreenVisualizer({ onClose }: Props) {
 
       // ── Bars ───────────────────────────────────────────────────────────
       if (style === "bars") {
-        const BAR_COUNT = 80;
-        const gap       = Math.max(2, Math.round(2 * dpr));
+        if (barClipTop > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, barClipTop, w, h - barClipTop);
+          ctx.clip();
+        }
+        // Fewer, wider bars on mobile — thick bold bars suit a small portrait screen
+        const BAR_COUNT = currentPlatform === "android" ? 28 : 80;
+        const gap       = currentPlatform === "android"
+          ? Math.max(4, Math.round(5 * dpr))
+          : Math.max(2, Math.round(2 * dpr));
         const barW      = Math.max(1, Math.floor((w - (BAR_COUNT - 1) * gap) / BAR_COUNT));
 
         const grad = ctx.createLinearGradient(0, h, 0, 0);
@@ -216,7 +236,7 @@ export function FullscreenVisualizer({ onClose }: Props) {
             for (let k = 0; k < step; k++) sum += freqDataRef.current[i * step + k] ?? 0;
             const raw  = sum / (step * 255);
             const norm = Math.min(1, raw * ampFactor);
-            const bh   = Math.max(2 * dpr, Math.round(norm * h));
+            const bh   = Math.max(2 * dpr, Math.round(norm * barMaxH));
             ctx.shadowBlur = norm > 0.45 ? norm * 45 * dpr : 0;
             ctx.fillRect(i * (barW + gap), h - bh, barW, bh);
           }
@@ -229,10 +249,11 @@ export function FullscreenVisualizer({ onClose }: Props) {
             const norm  = ic.barBase
               + ic.barAmp1 * (0.5 + 0.5 * Math.sin(phase + t * ic.barT1))
               + ic.barAmp2 * (0.5 + 0.5 * Math.abs(Math.sin(phase * 0.5 + t * ic.barT2)));
-            const bh = Math.max(4 * dpr, Math.round(norm * h));
+            const bh = Math.max(4 * dpr, Math.round(norm * barMaxH));
             ctx.fillRect(i * (barW + gap), h - bh, barW, bh);
           }
         }
+        if (barClipTop > 0) ctx.restore();
       }
 
       // ── Wave ───────────────────────────────────────────────────────────
@@ -256,7 +277,7 @@ export function FullscreenVisualizer({ onClose }: Props) {
           const bassLen = Math.min(6, binCount);
           for (let i = 0; i < bassLen; i++) bassSum += freqDataRef.current[i];
           const bassEnergy = playing ? bassSum / (bassLen * 255) : 0;
-          const amplitude  = h * (0.40 + bassEnergy * 0.20 * ampFactor);
+          const amplitude  = maxDrawH * (0.40 + bassEnergy * 0.20 * ampFactor);
 
           ctx.strokeStyle = `hsl(${hsl} / 0.92)`;
           ctx.lineWidth   = Math.max(2, 3.5 * dpr);
@@ -283,9 +304,9 @@ export function FullscreenVisualizer({ onClose }: Props) {
           for (let i = 0; i <= PTS; i++) {
             const x = i * sliceW;
             const y = h / 2
-              + Math.sin(i / PTS * Math.PI * 6  + t * ic.wT1) * h * ic.wA1
-              + Math.sin(i / PTS * Math.PI * 3  + t * ic.wT2) * h * ic.wA2
-              + Math.sin(i / PTS * Math.PI * 12 + t * ic.wT3) * h * ic.wA3;
+              + Math.sin(i / PTS * Math.PI * 6  + t * ic.wT1) * maxDrawH * ic.wA1
+              + Math.sin(i / PTS * Math.PI * 3  + t * ic.wT2) * maxDrawH * ic.wA2
+              + Math.sin(i / PTS * Math.PI * 12 + t * ic.wT3) * maxDrawH * ic.wA3;
             i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
           }
         }
@@ -454,7 +475,8 @@ export function FullscreenVisualizer({ onClose }: Props) {
     try { localStorage.setItem("viz-fs-ambient-intensity", level); } catch { /* ignore */ }
   };
 
-  const cover = currentTrack ? trackCoverUrl(currentTrack) : undefined;
+  const cover    = currentTrack ? trackCoverUrl(currentTrack) : undefined;
+  const isMobile = currentPlatform === "android";
 
   return (
     <div
@@ -474,7 +496,9 @@ export function FullscreenVisualizer({ onClose }: Props) {
           <>
             <div
               className="rounded-2xl overflow-hidden shadow-[0_32px_96px_-8px_rgba(0,0,0,0.85)] pointer-events-none"
-              style={{ width: 220, height: 220 }}
+              style={isMobile
+                ? { width: "min(45vw, 220px)", height: "min(45vw, 220px)" }
+                : { width: 220, height: 220 }}
             >
               <AlbumCover
                 src={cover}
@@ -487,7 +511,10 @@ export function FullscreenVisualizer({ onClose }: Props) {
             </div>
 
             <div className="flex flex-col items-center gap-1 pointer-events-none">
-              <p className="text-white font-semibold text-2xl text-center drop-shadow-lg max-w-xl truncate">
+              <p className={cn(
+                "text-white font-semibold text-center drop-shadow-lg truncate",
+                isMobile ? "text-xl max-w-[85vw]" : "text-2xl max-w-xl",
+              )}>
                 {currentTrack.title}
               </p>
               <p className="text-white/65 text-sm text-center drop-shadow">
@@ -495,26 +522,26 @@ export function FullscreenVisualizer({ onClose }: Props) {
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className={cn("flex items-center", isMobile ? "gap-6" : "gap-2.5")}>
               <button
                 onClick={prev}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/12 hover:bg-white/22 text-white transition-colors"
+                className={cn("flex items-center justify-center rounded-full bg-white/12 active:bg-white/22 text-white transition-colors", isMobile ? "w-14 h-14" : "w-9 h-9")}
               >
-                <SkipBack className="w-4 h-4 fill-current" />
+                <SkipBack className={cn("fill-current", isMobile ? "w-6 h-6" : "w-4 h-4")} />
               </button>
               <button
                 onClick={togglePlay}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/22 hover:bg-white/32 text-white transition-colors"
+                className={cn("flex items-center justify-center rounded-full bg-white/22 active:bg-white/32 text-white transition-colors", isMobile ? "w-16 h-16" : "w-10 h-10")}
               >
                 {isPlaying
-                  ? <Pause className="w-5 h-5 fill-current" />
-                  : <Play  className="w-5 h-5 fill-current ml-0.5" />}
+                  ? <Pause className={cn("fill-current", isMobile ? "w-7 h-7" : "w-5 h-5")} />
+                  : <Play  className={cn("fill-current ml-0.5", isMobile ? "w-7 h-7" : "w-5 h-5")} />}
               </button>
               <button
                 onClick={next}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/12 hover:bg-white/22 text-white transition-colors"
+                className={cn("flex items-center justify-center rounded-full bg-white/12 active:bg-white/22 text-white transition-colors", isMobile ? "w-14 h-14" : "w-9 h-9")}
               >
-                <SkipForward className="w-4 h-4 fill-current" />
+                <SkipForward className={cn("fill-current", isMobile ? "w-6 h-6" : "w-4 h-4")} />
               </button>
             </div>
           </>
@@ -531,46 +558,29 @@ export function FullscreenVisualizer({ onClose }: Props) {
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none",
         )}
-        style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)", paddingBottom: 44 }}
+        style={{
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)",
+          paddingBottom: 44,
+          ...(isMobile ? { paddingTop: "env(safe-area-inset-top, 0px)" } : {}),
+        }}
       >
-        <div className="flex items-center justify-between px-5 py-4">
-
-          {/* Exit fullscreen */}
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+        {isMobile ? (
+          /* ── Mobile: single horizontally-scrollable row — never clips ──── */
+          <div
+            className="flex items-center gap-2 overflow-x-auto px-4 pt-4 pb-3"
+            style={{ WebkitOverflowScrolling: "touch" }}
           >
-            <X className="w-3.5 h-3.5 shrink-0" />
-            Exit
-            <span className="text-white/40 font-normal ml-0.5 text-[11px]">ESC</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            {/* Ambient intensity selector — only visible in Ambient mode */}
-            {vizMode === "ambient" && (
-              <div className="flex items-center gap-1">
-                {AMBIENT_INTENSITIES.map(level => (
-                  <button
-                    key={level}
-                    onClick={() => changeAmbientIntensity(level)}
-                    className={cn(
-                      "h-8 px-2.5 rounded-lg text-xs font-medium transition-colors backdrop-blur-sm",
-                      ambientIntensity === level
-                        ? "bg-white/30 text-white"
-                        : "bg-white/10 hover:bg-white/20 text-white/65 hover:text-white",
-                    )}
-                  >
-                    {AMBIENT_INTENSITY_LABELS[level]}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Pure / Amplified sub-mode toggle — only visible in Reactive mode */}
+            <button
+              onClick={onClose}
+              className="flex-shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-white/12 active:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+            >
+              <X className="w-3.5 h-3.5 shrink-0" />
+              Exit
+            </button>
             {vizMode === "reactive" && (
               <button
                 onClick={toggleReactiveSubMode}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+                className="flex-shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-white/12 active:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
               >
                 {reactiveSubMode === "pure"
                   ? <Gauge className="w-3.5 h-3.5 shrink-0" />
@@ -578,31 +588,101 @@ export function FullscreenVisualizer({ onClose }: Props) {
                 {reactiveSubMode === "pure" ? "Pure" : "Amplified"}
               </button>
             )}
-
-            {/* Ambient / Reactive toggle */}
             <button
               onClick={toggleMode}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+              className="flex-shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-white/12 active:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
             >
               {vizMode === "ambient"
                 ? <Wand2 className="w-3.5 h-3.5 shrink-0" />
                 : <Zap   className="w-3.5 h-3.5 shrink-0" />}
               {vizMode === "ambient" ? "Ambient" : "Reactive"}
             </button>
-
-            {/* Style picker — click cycles bars → wave → particles */}
             <button
               onClick={cycleStyle}
-              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+              className="flex-shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-white/12 active:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
             >
               {vizStyle === "bars"      && <BarChart2 className="w-3.5 h-3.5 shrink-0" />}
               {vizStyle === "wave"      && <Activity  className="w-3.5 h-3.5 shrink-0" />}
               {vizStyle === "particles" && <Sparkles  className="w-3.5 h-3.5 shrink-0" />}
               {STYLE_LABELS[vizStyle]}
             </button>
+            {vizMode === "ambient" && AMBIENT_INTENSITIES.map(level => (
+              <button
+                key={level}
+                onClick={() => changeAmbientIntensity(level)}
+                className={cn(
+                  "flex-shrink-0 min-h-[44px] px-3 rounded-xl text-xs font-medium transition-colors backdrop-blur-sm",
+                  ambientIntensity === level
+                    ? "bg-white/30 text-white"
+                    : "bg-white/10 active:bg-white/20 text-white/65",
+                )}
+              >
+                {AMBIENT_INTENSITY_LABELS[level]}
+              </button>
+            ))}
           </div>
-
-        </div>
+        ) : (
+          /* ── Desktop: single-row layout ──────────────────────────────────── */
+          <div className="flex items-center justify-between px-5 py-4">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+            >
+              <X className="w-3.5 h-3.5 shrink-0" />
+              Exit
+              <span className="text-white/40 font-normal ml-0.5 text-[11px]">ESC</span>
+            </button>
+            <div className="flex items-center gap-2">
+              {vizMode === "ambient" && (
+                <div className="flex items-center gap-1">
+                  {AMBIENT_INTENSITIES.map(level => (
+                    <button
+                      key={level}
+                      onClick={() => changeAmbientIntensity(level)}
+                      className={cn(
+                        "h-8 px-2.5 rounded-lg text-xs font-medium transition-colors backdrop-blur-sm",
+                        ambientIntensity === level
+                          ? "bg-white/30 text-white"
+                          : "bg-white/10 hover:bg-white/20 text-white/65 hover:text-white",
+                      )}
+                    >
+                      {AMBIENT_INTENSITY_LABELS[level]}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {vizMode === "reactive" && (
+                <button
+                  onClick={toggleReactiveSubMode}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+                >
+                  {reactiveSubMode === "pure"
+                    ? <Gauge className="w-3.5 h-3.5 shrink-0" />
+                    : <Flame className="w-3.5 h-3.5 shrink-0" />}
+                  {reactiveSubMode === "pure" ? "Pure" : "Amplified"}
+                </button>
+              )}
+              <button
+                onClick={toggleMode}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+              >
+                {vizMode === "ambient"
+                  ? <Wand2 className="w-3.5 h-3.5 shrink-0" />
+                  : <Zap   className="w-3.5 h-3.5 shrink-0" />}
+                {vizMode === "ambient" ? "Ambient" : "Reactive"}
+              </button>
+              <button
+                onClick={cycleStyle}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/12 hover:bg-white/22 text-white text-xs font-medium transition-colors backdrop-blur-sm"
+              >
+                {vizStyle === "bars"      && <BarChart2 className="w-3.5 h-3.5 shrink-0" />}
+                {vizStyle === "wave"      && <Activity  className="w-3.5 h-3.5 shrink-0" />}
+                {vizStyle === "particles" && <Sparkles  className="w-3.5 h-3.5 shrink-0" />}
+                {STYLE_LABELS[vizStyle]}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

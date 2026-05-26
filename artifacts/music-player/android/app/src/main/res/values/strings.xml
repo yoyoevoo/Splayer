@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Splayer</string>
+    <string name="title_activity_main">Splayer</string>
+    <string name="package_name">com.splayer.app</string>
+    <string name="custom_url_scheme">com.splayer.app</string>
+</resources>

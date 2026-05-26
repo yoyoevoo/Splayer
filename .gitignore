@@ -74,10 +74,7 @@ artifacts/music-player/resources/
 *.exe
 *.msi
 
-# Android build directory
-artifacts/music-player/android/
-
-# Release APK build artifacts
+# Release APK build artifacts (attach to GitHub release instead)
 artifacts/music-player/*.apk
 
 # Release signing keystore — never commit private keys

@@ -221,8 +221,10 @@ export function SpotifyPlaylistDialog({ open, onOpenChange, onBackgroundProgress
     if (result?.files?.length) {
       for (const f of result.files) {
         try {
-          // Read from disk via file:// URL — avoids sending large byte arrays over IPC
-          const fileUrl = "file:///" + f.filePath.replace(/\\/g, "/");
+          // Read from disk. On Android fileFetchUrl is a WebView-accessible URL;
+          // on Electron we build a file:// URL from the absolute path.
+          const fileUrl = (f as { fileFetchUrl?: string }).fileFetchUrl
+            ?? ("file:///" + f.filePath.replace(/\\/g, "/"));
           const resp  = await fetch(fileUrl);
           const blob  = await resp.blob();
           const file  = new File([blob], f.fileName, { type: f.mimeType });

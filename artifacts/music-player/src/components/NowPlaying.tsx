@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart2, Film, Heart, ImagePlus, Maximize2, Pencil, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ export function NowPlaying() {
     setLyricsOpen,
     isPlaying,
     currentTime,
+    fsVizOpen,
+    setFsVizOpen,
   } = usePlayer();
 
   const [likeAnimating, setLikeAnimating] = useState(false);
@@ -53,7 +56,7 @@ export function NowPlaying() {
   const [fetchArtQuery,  setFetchArtQuery]  = useState("");
   const [fetchArtLoading,setFetchArtLoading]= useState(false);
   const [vizEnabled,     setVizEnabled]     = useState(readVizPref);
-  const [fsVizOpen,      setFsVizOpen]      = useState(false);
+  // fsVizOpen / setFsVizOpen come from player context so Player.tsx can hide PlayerControls
 
   // ── Floating video panel ─────────────────────────────────────────────
   const [videoOpen,  setVideoOpen]  = useState(false);
@@ -729,9 +732,10 @@ export function NowPlaying() {
         track={currentTrack}
       />
 
-      {/* Fullscreen visualizer overlay — mounts over everything at z:9999 */}
-      {fsVizOpen && (
-        <FullscreenVisualizer onClose={() => setFsVizOpen(false)} />
+      {/* Fullscreen visualizer overlay — portalled to document.body to escape z-[1] stacking context */}
+      {fsVizOpen && createPortal(
+        <FullscreenVisualizer onClose={() => setFsVizOpen(false)} />,
+        document.body,
       )}
     </div>
   );

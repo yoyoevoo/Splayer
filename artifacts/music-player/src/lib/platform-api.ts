@@ -341,15 +341,6 @@ function buildAndroidAPI() {
 
     async showWindow() {},
 
-    // Spotify — credentials live in the Electron main process, not here.
-    async spotifyFetchPlaylist({ playlistUrl }: { playlistUrl: string }) {
-      return { error: "Spotify not available on Android" };
-    },
-
-    async spotifyFetchTrack({ trackUrl }: { trackUrl: string }) {
-      return { error: "Spotify not available on Android" };
-    },
-
     minimizeWindow: noop,
     maximizeWindow: noop,
     closeWindow: noop,

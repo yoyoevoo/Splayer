@@ -142,6 +142,8 @@ interface PlayerContextValue {
   cancelDownload: (id: string) => void;
   miniMode: boolean;
   setMiniMode: (v: boolean) => void;
+  fsVizOpen: boolean;
+  setFsVizOpen: (v: boolean) => void;
   playEphemeral: (track: Track, startTime?: number) => void;
   // Jump buttons
   skipBackSecs: number;
@@ -356,7 +358,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // ── Web Audio Pipeline ──────────────────────────────────────────────────────
   // Lazily initialise AudioContext + EQ + Analyser, then connect audio element.
-  const ensureWA = useCallback((el: HTMLAudioElement) => {
+  const ensureWA = useCallback((el: HTMLAudioElement): Promise<void> => {
     // Create context on first call (must happen from a user gesture)
     if (!waCtxRef.current) {
       const ctx = new AudioContext();
@@ -430,10 +432,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       waConnectedRef.current.add(el);
     }
 
-    // Resume if browser suspended the context
+    // Resume if browser suspended the context; return the promise so callers can
+    // await it before calling audio.play() — avoids the race on Android WebView.
     if (waCtxRef.current.state === "suspended") {
-      waCtxRef.current.resume().catch(() => {});
+      return waCtxRef.current.resume().catch(() => {});
     }
+    return Promise.resolve();
   }, []);
 
   const setEqGain = useCallback((bandIndex: number, gain: number) => {
@@ -599,17 +603,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       countedTrackIdRef.current = null;
     }
     setCurrentTrackId(trackId);
-    // Initialise Web Audio pipeline (requires user gesture, so call here)
-    ensureWA(audio);
+    // Initialise Web Audio pipeline (requires user gesture, so call here).
+    // Await resume so AudioContext is running before we call play() — on Android
+    // WebView the context starts suspended and play() would silently produce no
+    // audio if the context hasn't resumed yet.
     const effVol = mutedRef.current ? 0 : volumeRef.current;
-    if (isNewSrc && crossfadeEnabledRef.current && !mutedRef.current) {
-      audio.volume = 0;
-      audio.play().catch(() => {});
-      rampVolume(audio, 0, effVol, crossfadeSecsRef.current * 1000);
-    } else {
-      audio.volume = effVol;
-      audio.play().catch(() => {});
-    }
+    ensureWA(audio).then(() => {
+      if (isNewSrc && crossfadeEnabledRef.current && !mutedRef.current) {
+        audio.volume = 0;
+        audio.play().catch(() => {});
+        rampVolume(audio, 0, effVol, crossfadeSecsRef.current * 1000);
+      } else {
+        audio.volume = effVol;
+        audio.play().catch(() => {});
+      }
+    });
   }, [cancelXf, rampVolume, ensureWA]);
 
   const playIndex = useCallback(
@@ -649,8 +657,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (audio.paused) {
-      ensureWA(audio); // resume AudioContext if suspended
-      audio.play().catch(() => {});
+      ensureWA(audio).then(() => audio.play().catch(() => {}));
     } else {
       audio.pause();
     }
@@ -1588,6 +1595,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const [downloads, setDownloads] = useState<ActiveDownload[]>([]);
   const [miniMode,  setMiniMode]  = useState(true);
+  const [fsVizOpen, setFsVizOpen] = useState(false);
 
   // ----- Jump buttons -----
   const [skipBackSecs,    setSkipBackSecsState]    = useState<number>(() => parseInt(localStorage.getItem("skip-back-secs")    ?? "10") || 10);
@@ -2489,6 +2497,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelDownload,
       miniMode,
       setMiniMode,
+      fsVizOpen,
+      setFsVizOpen,
       playEphemeral,
       skipBackSecs,
       skipForwardSecs,
@@ -2571,6 +2581,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       cancelDownload,
       miniMode,
       setMiniMode,
+      fsVizOpen,
+      setFsVizOpen,
       playEphemeral,
       skipBackSecs,
       skipForwardSecs,

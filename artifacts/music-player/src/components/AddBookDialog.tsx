@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BookOpen, Loader2, Upload, Youtube } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { currentPlatform } from "@/lib/platform-api";
 
 type AddTab = "url" | "file";
 
@@ -15,7 +16,7 @@ interface Props {
 }
 
 export function AddBookDialog({ open, onOpenChange, onAddUrl, onAddFile }: Props) {
-  const [tab,     setTab]     = useState<AddTab>("url");
+  const [tab,     setTab]     = useState<AddTab>(currentPlatform === "android" ? "file" : "url");
   const [url,     setUrl]     = useState("");
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -73,26 +74,28 @@ export function AddBookDialog({ open, onOpenChange, onAddUrl, onAddFile }: Props
           </DialogTitle>
         </DialogHeader>
 
-        {/* Tab switcher */}
-        <div className="flex gap-1 p-1 bg-muted/40 rounded-md">
-          {(["url", "file"] as AddTab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => { setTab(t); setError(null); }}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 text-xs h-7 rounded transition-colors",
-                tab === t
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t === "url"
-                ? <><Youtube className="w-3.5 h-3.5 text-red-500" /> YouTube URL</>
-                : <><Upload className="w-3.5 h-3.5" /> Upload File</>}
-            </button>
-          ))}
-        </div>
+        {/* Tab switcher — hidden on Android (local files only) */}
+        {currentPlatform !== "android" && (
+          <div className="flex gap-1 p-1 bg-muted/40 rounded-md">
+            {(["url", "file"] as AddTab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => { setTab(t); setError(null); }}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 text-xs h-7 rounded transition-colors",
+                  tab === t
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t === "url"
+                  ? <><Youtube className="w-3.5 h-3.5 text-red-500" /> YouTube URL</>
+                  : <><Upload className="w-3.5 h-3.5" /> Upload File</>}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="space-y-4 pt-1">
           {tab === "url" ? (

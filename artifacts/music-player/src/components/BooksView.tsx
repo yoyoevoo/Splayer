@@ -6,6 +6,7 @@ import type { Book } from "@/lib/types";
 import { BookDetailView } from "./BookDetailView";
 import { AddBookDialog } from "./AddBookDialog";
 import { cn } from "@/lib/utils";
+import { currentPlatform } from "@/lib/platform-api";
 
 export function BooksView() {
   const { books, loading, addBookFromFile, addBookFromUrl, removeBook } = useBooks();
@@ -47,7 +48,9 @@ export function BooksView() {
             <BookOpen className="w-8 h-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">No audiobooks yet</p>
             <p className="text-xs text-muted-foreground/70">
-              Add a local file or a YouTube playlist to get started
+              {currentPlatform === "android"
+                ? "Add a local audio file to get started"
+                : "Add a local file or a YouTube playlist to get started"}
             </p>
             <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
               <Plus className="w-3.5 h-3.5 mr-1.5" />
