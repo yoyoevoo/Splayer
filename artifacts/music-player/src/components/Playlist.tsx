@@ -93,6 +93,7 @@ interface PlaylistProps {
   onAddFiles?: () => void;
   onAddFolder?: () => void;
   onOpenYt?: () => void;
+  onOpenSpotify?: () => void;
   onOpenAppearance?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
@@ -106,6 +107,7 @@ export function Playlist({
   onAddFiles,
   onAddFolder,
   onOpenYt,
+  onOpenSpotify,
   onOpenAppearance,
   onOpenSettings,
   onOpenShortcuts,
@@ -171,6 +173,16 @@ export function Playlist({
                 <Youtube className="w-4 h-4 mr-2 text-red-500" />
                 From YouTube...
               </DropdownMenuItem>
+              {currentPlatform !== "android" && (
+                <DropdownMenuItem onClick={onOpenSpotify}>
+                  <span className="w-4 h-4 mr-2 flex items-center justify-center shrink-0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#1DB954" aria-hidden>
+                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.516 17.32a.75.75 0 0 1-1.032.25c-2.823-1.725-6.38-2.115-10.567-1.158a.75.75 0 0 1-.334-1.463c4.58-1.047 8.508-.597 11.682 1.34a.75.75 0 0 1 .251 1.031zm1.473-3.276a.937.937 0 0 1-1.288.308C14.96 12.525 11.1 12 7.2 13.062a.938.938 0 0 1-.468-1.815C11.17 10.07 15.48 10.655 18.68 12.756a.938.938 0 0 1 .309 1.288zm.126-3.408c-3.35-1.99-8.875-2.172-12.073-1.201a1.124 1.124 0 0 1-.65-2.15c3.671-1.113 9.77-.898 13.626 1.39a1.125 1.125 0 1 1-1.127 1.95l.224-.989z" />
+                    </svg>
+                  </span>
+                  From Spotify
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <DownloadQueueButton />

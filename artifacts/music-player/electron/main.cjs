@@ -784,6 +784,12 @@ function createWindow() {
     "worker-src blob: 'self'",
   ].join("; ");
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // Skip CSP for the widget window — it uses inline/same-dir scripts and has no
+    // external content, so the main-app policy would only break it needlessly.
+    if (details.url.includes("widget.html") || details.url.includes("widget.js")) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,

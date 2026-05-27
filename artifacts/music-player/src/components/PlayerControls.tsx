@@ -276,6 +276,7 @@ export function PlayerControls() {
   return (
     <>
       <div
+        data-testid="player-controls"
         className={cn(
           "border-t border-card-border px-4 py-3",
           currentPlatform === "android" ? "relative z-10 bg-card" : "bg-card/60 backdrop-blur",

@@ -26,6 +26,7 @@ export function JumpToCurrentButton({ onClick, visible, elevated = false }: Prop
   return (
     <button
       onClick={onClick}
+      data-testid="button-jump-to-current"
       title="Jump to playing song"
       aria-label="Jump to playing song"
       className={cn(

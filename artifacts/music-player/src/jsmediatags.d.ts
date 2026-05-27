@@ -1,3 +1,5 @@
+declare const __BUILD_DATE__: string;
+
 declare module "jsmediatags/dist/jsmediatags.min.js" {
   interface Picture {
     data: number[];
