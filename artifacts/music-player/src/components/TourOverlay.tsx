@@ -60,6 +60,11 @@ const STEPS: Step[] = [
       "When a song is playing, switch to Full Player mode and click the expand icon on the album art to open the fullscreen visualizer — it reacts to your music in real time.",
   },
   {
+    selector: '[data-testid="button-lyrics"]',
+    title: "Getting Better Lyrics Results",
+    description: "For the best results, search the song name without the extras — remove things like '(Official Video)', '(feat. Someone)', '(From Movie)', '(Remix)', etc. Just the plain song title and artist gets you synced lyrics faster.",
+  },
+  {
     selector: '[data-testid="button-mini-player"]',
     title: "Mini Player",
     description: "Pop out a mini player so you can control music from anywhere on your desktop.",

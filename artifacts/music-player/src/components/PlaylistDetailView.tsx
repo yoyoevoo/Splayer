@@ -8,6 +8,8 @@ import {
   GripVertical,
   Heart,
   ImagePlus,
+  ListEnd,
+  ListStart,
   MoreHorizontal,
   Pencil,
   Play,
@@ -71,6 +73,8 @@ export function PlaylistDetailView({
     currentTrack,
     isPlaying,
     playFromList,
+    playNext,
+    playAfterQueue,
     deletePlaylist,
     setPlaylistCover,
     removeTrackFromPlaylist,
@@ -583,6 +587,14 @@ export function PlaylistDetailView({
                         >
                           <Play className="w-4 h-4 mr-2" />
                           Play
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => playNext(t.id)}>
+                          <ListStart className="w-4 h-4 mr-2" />
+                          Play Next
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => playAfterQueue(t.id)}>
+                          <ListEnd className="w-4 h-4 mr-2" />
+                          Play After Queue
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                         <AddToPlaylistContextSub

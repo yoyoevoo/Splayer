@@ -11,7 +11,10 @@ async function openUrl(url: string) {
     (platformAPI as any)?.openExternal?.(url);
   }
 }
-import { Archive, Download, FolderOpen, Monitor, Settings, Upload, PlayCircle } from "lucide-react";
+import { Archive, Download, FolderOpen, Gamepad2, Monitor, Settings, Upload, PlayCircle } from "lucide-react";
+import { usePlayer } from "@/lib/player-context";
+import type { ButtonKey } from "@/lib/player-context";
+import { BUTTON_VISIBILITY_DEFAULTS } from "@/lib/player-context";
 import { startTour } from "@/components/TourOverlay";
 import {
   Dialog,
@@ -673,9 +676,84 @@ function DiscordSection() {
   );
 }
 
+// ── ButtonsSection ────────────────────────────────────────────────────────────
+
+type ButtonDef = { key: ButtonKey; label: string; desc: string; desktopOnly?: true };
+
+const BUTTON_DEFS: ButtonDef[] = [
+  { key: "shuffle",      label: "Shuffle",               desc: "Toggle shuffle playback mode" },
+  { key: "repeat",       label: "Repeat",                desc: "Cycle through repeat modes" },
+  { key: "prevTrack",    label: "Previous Track",        desc: "Skip to the previous song" },
+  { key: "nextTrack",    label: "Next Track",            desc: "Skip to the next song" },
+  { key: "sleepTimer",   label: "Sleep Timer",           desc: "Set a timer to stop playback automatically", desktopOnly: true },
+  { key: "speed",        label: "Playback Speed",        desc: "Change the playback speed", desktopOnly: true },
+  { key: "crossfade",    label: "Crossfade",             desc: "Blend between tracks with a crossfade" },
+  { key: "volume",       label: "Volume",                desc: "Volume slider and mute button", desktopOnly: true },
+  { key: "equalizer",    label: "Equalizer",             desc: "Open the EQ and audio effects panel" },
+  { key: "miniPlayer",   label: "Mini Player",           desc: "Switch to the compact player view", desktopOnly: true },
+  { key: "fsVisualizer", label: "Fullscreen Visualizer", desc: "Show the full-screen audio visualizer", desktopOnly: true },
+  { key: "lyrics",       label: "Lyrics",                desc: "Toggle the lyrics overlay on the album art", desktopOnly: true },
+  { key: "queue",        label: "Queue",                 desc: "View and manage the playback queue" },
+  { key: "podcasts",     label: "Podcasts",              desc: "Show or hide the Podcasts tab in the library", desktopOnly: true },
+  { key: "audiobooks",   label: "Audiobooks",            desc: "Show or hide the Audiobooks tab in the library" },
+];
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+        on ? "bg-primary" : "bg-muted",
+      )}
+      role="switch"
+      aria-checked={on}
+    >
+      <span
+        className={cn(
+          "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform duration-200",
+          on ? "translate-x-5" : "translate-x-0",
+        )}
+      />
+    </button>
+  );
+}
+
+function ButtonsSection() {
+  const { buttonVisibility, setButtonVisibility, resetButtonVisibility } = usePlayer();
+  const visible = BUTTON_DEFS.filter((d) => !d.desktopOnly || !isAndroid);
+
+  return (
+    <div className="space-y-1 py-1">
+      <div className="flex flex-col gap-3">
+        {visible.map((def) => (
+          <div key={def.key} className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{def.label}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{def.desc}</p>
+            </div>
+            <Toggle
+              on={buttonVisibility[def.key]}
+              onToggle={() => setButtonVisibility(def.key, !buttonVisibility[def.key])}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="pt-4 flex justify-end">
+        <button
+          onClick={resetButtonVisibility}
+          className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+        >
+          Reset to defaults
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── SettingsDialog ────────────────────────────────────────────────────────────
 
-type Tab = "folders" | "downloads" | "behavior" | "backup";
+type Tab = "folders" | "downloads" | "behavior" | "buttons" | "backup";
 
 interface Props {
   open: boolean;
@@ -733,49 +811,61 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           <button
             onClick={() => setTab("folders")}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              "flex-1 flex items-center justify-center gap-1 py-1.5 font-medium transition-colors",
               tab === "folders"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground",
             )}
           >
-            <FolderOpen className="w-3.5 h-3.5" />
+            <FolderOpen className="w-3 h-3" />
             Folders
           </button>
           <button
             onClick={() => setTab("downloads")}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              "flex-1 flex items-center justify-center gap-1 py-1.5 font-medium transition-colors",
               tab === "downloads"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground",
             )}
           >
-            <Download className="w-3.5 h-3.5" />
-            Downloads
+            <Download className="w-3 h-3" />
+            DL
           </button>
           <button
             onClick={() => setTab("behavior")}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              "flex-1 flex items-center justify-center gap-1 py-1.5 font-medium transition-colors",
               tab === "behavior"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground",
             )}
           >
-            <Monitor className="w-3.5 h-3.5" />
+            <Monitor className="w-3 h-3" />
             Behavior
+          </button>
+          <button
+            onClick={() => setTab("buttons")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1 py-1.5 font-medium transition-colors",
+              tab === "buttons"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Gamepad2 className="w-3 h-3" />
+            Buttons
           </button>
           <button
             onClick={() => setTab("backup")}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 font-medium transition-colors",
+              "flex-1 flex items-center justify-center gap-1 py-1.5 font-medium transition-colors",
               tab === "backup"
                 ? "bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground",
             )}
           >
-            <Archive className="w-3.5 h-3.5" />
+            <Archive className="w-3 h-3" />
             Backup
           </button>
         </div>
@@ -883,6 +973,16 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── Buttons tab ── */}
+        {tab === "buttons" && (
+          <div className="py-1 overflow-y-auto max-h-[420px]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+              Player Controls
+            </p>
+            <ButtonsSection />
           </div>
         )}
 
