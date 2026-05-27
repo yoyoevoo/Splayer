@@ -44,6 +44,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 - Shuffle, Repeat (Off / All / One)
 - Crossfade, Playback speed (0.5×–2×)
 - Sleep timer, configurable skip buttons
+- Play Next & Play After Queue
 - Auto-pause on headphone disconnect
 
 **Audio**
@@ -94,6 +95,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 
 **Other**
 - Mini player, floating video player
+- Customizable player buttons — hide any control you don't use
 - Discord Rich Presence — shows what you're listening to automatically
 - Media keys work even when minimized
 - Auto-backup and restore
@@ -105,7 +107,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 
 | Platform | File | Notes |
 |----------|------|-------|
-| **Linux** | `Splayer-0.1.0.AppImage` | Works on any distro, no install needed |
+| **Linux** | `Splayer-0.2.0.AppImage` | Works on any distro, no install needed |
 | **Windows** | `Splayer_Setup.exe` | Run the installer |
 | **Android** | `Splayer-v0.1.0-android.apk` | Sideload — enable Unknown sources in Android settings |
 
@@ -113,8 +115,8 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 
 **Linux setup:**
 ```bash
-chmod +x Splayer-0.1.0.AppImage
-./Splayer-0.1.0.AppImage
+chmod +x Splayer-0.2.0.AppImage
+./Splayer-0.2.0.AppImage
 ```
 
 ---
