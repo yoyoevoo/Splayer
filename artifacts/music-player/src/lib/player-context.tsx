@@ -98,6 +98,8 @@ interface PlayerContextValue {
     playlistId?: string | null,
     playlistType?: "library" | "regular" | "smart",
   ) => void;
+  playNext: (trackId: string) => void;
+  playAfterQueue: (trackId: string) => void;
   togglePlay: () => void;
   next: () => void;
   prev: () => void;
@@ -152,7 +154,23 @@ interface PlayerContextValue {
   setSkipForwardSecs: (s: number) => void;
   skipBack: () => void;
   skipForward: () => void;
+  buttonVisibility: Record<ButtonKey, boolean>;
+  setButtonVisibility: (key: ButtonKey, visible: boolean) => void;
+  resetButtonVisibility: () => void;
 }
+
+export type ButtonKey =
+  | "shuffle" | "repeat" | "prevTrack" | "nextTrack"
+  | "sleepTimer" | "speed" | "crossfade" | "volume"
+  | "equalizer" | "miniPlayer" | "fsVisualizer" | "lyrics" | "queue"
+  | "podcasts" | "audiobooks";
+
+export const BUTTON_VISIBILITY_DEFAULTS: Record<ButtonKey, boolean> = {
+  shuffle: true, repeat: true, prevTrack: true, nextTrack: true,
+  sleepTimer: true, speed: true, crossfade: true, volume: true,
+  equalizer: true, miniPlayer: true, fsVisualizer: true, lyrics: true, queue: true,
+  podcasts: true, audiobooks: true,
+};
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
@@ -647,6 +665,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     },
     [playTrackById],
   );
+
+  const playNext = useCallback((trackId: string) => {
+    const currentIds = queueIdsRef.current ?? tracksRef.current.map((t) => t.id);
+    const curIdx = currentTrackIdRef.current === null
+      ? -1
+      : currentIds.indexOf(currentTrackIdRef.current);
+    const insertAt = curIdx === -1 ? currentIds.length : curIdx + 1;
+    setCurrentQueueIds([
+      ...currentIds.slice(0, insertAt),
+      trackId,
+      ...currentIds.slice(insertAt),
+    ]);
+  }, []);
+
+  const playAfterQueue = useCallback((trackId: string) => {
+    const currentIds = queueIdsRef.current ?? tracksRef.current.map((t) => t.id);
+    setCurrentQueueIds([...currentIds, trackId]);
+  }, []);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -1597,6 +1633,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [miniMode,  setMiniMode]  = useState(true);
   const [fsVizOpen, setFsVizOpen] = useState(false);
 
+  const [buttonVisibility, setButtonVisibilityState] = useState<Record<ButtonKey, boolean>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("player-button-visibility") ?? "null");
+      return { ...BUTTON_VISIBILITY_DEFAULTS, ...(saved ?? {}) };
+    } catch { return { ...BUTTON_VISIBILITY_DEFAULTS }; }
+  });
+
+  const setButtonVisibility = useCallback((key: ButtonKey, visible: boolean) => {
+    setButtonVisibilityState((prev) => {
+      const next = { ...prev, [key]: visible };
+      try { localStorage.setItem("player-button-visibility", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const resetButtonVisibility = useCallback(() => {
+    setButtonVisibilityState({ ...BUTTON_VISIBILITY_DEFAULTS });
+    try { localStorage.removeItem("player-button-visibility"); } catch {}
+  }, []);
+
   // ----- Jump buttons -----
   const [skipBackSecs,    setSkipBackSecsState]    = useState<number>(() => parseInt(localStorage.getItem("skip-back-secs")    ?? "10") || 10);
   const [skipForwardSecs, setSkipForwardSecsState] = useState<number>(() => parseInt(localStorage.getItem("skip-forward-secs") ?? "30") || 30);
@@ -2463,6 +2519,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       addFiles,
       playIndex,
       playFromList,
+      playNext,
+      playAfterQueue,
       togglePlay,
       next,
       prev,
@@ -2506,6 +2564,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSkipForwardSecs,
       skipBack,
       skipForward,
+      buttonVisibility,
+      setButtonVisibility,
+      resetButtonVisibility,
     }),
     [
       speed,
@@ -2547,6 +2608,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       addFiles,
       playIndex,
       playFromList,
+      playNext,
+      playAfterQueue,
       togglePlay,
       next,
       prev,
@@ -2590,6 +2653,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSkipForwardSecs,
       skipBack,
       skipForward,
+      buttonVisibility,
+      setButtonVisibility,
+      resetButtonVisibility,
     ],
   );
 

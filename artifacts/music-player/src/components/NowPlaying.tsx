@@ -38,6 +38,7 @@ export function NowPlaying() {
     currentTime,
     fsVizOpen,
     setFsVizOpen,
+    buttonVisibility: bv,
   } = usePlayer();
 
   const [likeAnimating, setLikeAnimating] = useState(false);
@@ -597,7 +598,7 @@ export function NowPlaying() {
           </div>
 
           {/* z:4 — fullscreen visualizer button (top-right corner) */}
-          {!videoMode && (
+          {!videoMode && bv.fsVisualizer && (
             <button
               data-testid="button-fs-visualizer"
               onClick={() => setFsVizOpen(true)}

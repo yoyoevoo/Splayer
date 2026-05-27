@@ -27,6 +27,8 @@ import {
   Settings,
   Tags,
   Trash2,
+  ListEnd,
+  ListStart,
   Upload,
   Youtube,
 } from "lucide-react";
@@ -115,7 +117,24 @@ export function Playlist({
   onToggleMini,
   onOpenEditor,
 }: PlaylistProps = {}) {
+  const { buttonVisibility: bv } = usePlayer();
+
+  // Tailwind grid-cols classes — computed from which tabs are currently visible
+  const GRID_COLS = ["", "", "grid-cols-2", "grid-cols-3", "grid-cols-4", "grid-cols-5"] as const;
+  const deskCount  = 2 + (bv.queue ? 1 : 0) + (bv.podcasts ? 1 : 0) + (bv.audiobooks ? 1 : 0);
+  const droidCount = 2 + (bv.queue ? 1 : 0) + (bv.audiobooks ? 1 : 0);
+  const tabColsDesktop = GRID_COLS[deskCount]  ?? "grid-cols-5";
+  const tabColsAndroid = GRID_COLS[droidCount] ?? "grid-cols-4";
+
   const [view, setView] = useState<View>({ kind: "library" });
+
+  // Fall back to library if the active tab becomes hidden
+  useEffect(() => {
+    if (!bv.queue      && view.kind === "queue")    setView({ kind: "library" });
+    if (!bv.podcasts   && view.kind === "podcasts") setView({ kind: "library" });
+    if (!bv.audiobooks && view.kind === "books")    setView({ kind: "library" });
+  }, [bv.queue, bv.podcasts, bv.audiobooks, view.kind]);
+
   const { animatedTransitions, effectiveReduceMotion } = useTheme();
   const shouldAnimate = animatedTransitions && !effectiveReduceMotion;
   const viewKey = view.kind === "playlist" ? `playlist-${view.id}`
@@ -139,7 +158,7 @@ export function Playlist({
     >
       {currentPlatform !== "android" && (
         <div className="flex items-center justify-end px-3 py-0.5 shrink-0">
-          {onToggleMini && (
+          {onToggleMini && bv.miniPlayer && (
             <Button
               size="sm"
               variant={miniMode ? "default" : "ghost"}
@@ -211,8 +230,8 @@ export function Playlist({
         <div className={cn(
           "grid gap-0 bg-muted/40",
           currentPlatform === "android"
-            ? "grid-cols-4 py-1"
-            : "grid-cols-5 gap-1 p-1 rounded-md",
+            ? cn(tabColsAndroid, "py-1")
+            : cn(tabColsDesktop, "gap-1 p-1 rounded-md"),
         )}>
           <button
             type="button"
@@ -242,21 +261,23 @@ export function Playlist({
             <ListMusic className="w-3.5 h-3.5" />
             Playlists
           </button>
-          <button
-            type="button"
-            onClick={() => setView({ kind: "queue" })}
-            className={cn(
-              "flex items-center justify-center gap-1 text-xs h-7 rounded transition-colors",
-              tab === "queue"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            data-testid="tab-queue"
-          >
-            <ListOrdered className="w-3 h-3" />
-            Queue
-          </button>
-          {currentPlatform !== "android" && (
+          {bv.queue && (
+            <button
+              type="button"
+              onClick={() => setView({ kind: "queue" })}
+              className={cn(
+                "flex items-center justify-center gap-1 text-xs h-7 rounded transition-colors",
+                tab === "queue"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="tab-queue"
+            >
+              <ListOrdered className="w-3 h-3" />
+              Queue
+            </button>
+          )}
+          {currentPlatform !== "android" && bv.podcasts && (
             <button
               type="button"
               onClick={() => setView({ kind: "podcasts" })}
@@ -272,20 +293,22 @@ export function Playlist({
               Pods
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setView({ kind: "books" })}
-            className={cn(
-              "flex items-center justify-center gap-1 text-xs h-7 rounded transition-colors",
-              tab === "books"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            data-testid="tab-books"
-          >
-            <BookOpen className="w-3 h-3" />
-            Books
-          </button>
+          {bv.audiobooks && (
+            <button
+              type="button"
+              onClick={() => setView({ kind: "books" })}
+              className={cn(
+                "flex items-center justify-center gap-1 text-xs h-7 rounded transition-colors",
+                tab === "books"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="tab-books"
+            >
+              <BookOpen className="w-3 h-3" />
+              Books
+            </button>
+          )}
         </div>
       </div>
 
@@ -350,6 +373,8 @@ function LibraryView({ onOpenEditor }: { onOpenEditor?: (track: Track) => void }
     currentTrack,
     isPlaying,
     playFromList,
+    playNext,
+    playAfterQueue,
     addFiles,
     removeTrack,
     deleteTrackWithFile,
@@ -690,6 +715,25 @@ function LibraryView({ onOpenEditor }: { onOpenEditor?: (track: Track) => void }
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playNext(t.id);
+                          }}
+                        >
+                          <ListStart className="w-4 h-4 mr-2" />
+                          Play Next
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playAfterQueue(t.id);
+                          }}
+                        >
+                          <ListEnd className="w-4 h-4 mr-2" />
+                          Play After Queue
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <AddToPlaylistSubmenu
                           playlists={playlists}
                           onAdd={(plId) =>
@@ -753,6 +797,14 @@ function LibraryView({ onOpenEditor }: { onOpenEditor?: (track: Track) => void }
                       >
                         <Play className="w-4 h-4 mr-2" />
                         Play
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => playNext(t.id)}>
+                        <ListStart className="w-4 h-4 mr-2" />
+                        Play Next
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => playAfterQueue(t.id)}>
+                        <ListEnd className="w-4 h-4 mr-2" />
+                        Play After Queue
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <AddToPlaylistContextSub
