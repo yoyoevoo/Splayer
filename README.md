@@ -89,7 +89,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 - Real-time frequency visualizer
 - Waveform scrubber, fullscreen visualizer
 - Wallpaper with blur and opacity control
-- 7 built-in themes + build your own with a custom theme editor
+- 6 built-in themes + build your own with a custom theme editor
 - Dynamic colors pulled from album art
 
 **Other**
@@ -107,6 +107,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 |----------|------|-------|
 | **Linux** | `Splayer-0.1.0.AppImage` | Works on any distro, no install needed |
 | **Windows** | `Splayer_Setup.exe` | Run the installer |
+| **Android** | `Splayer-v0.1.0-android.apk` | Sideload — enable Unknown sources in Android settings |
 
 👉 **[Download latest release](https://github.com/yoyoevoo/Splayer/releases/latest)**
 
@@ -115,6 +116,14 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 chmod +x Splayer-0.1.0.AppImage
 ./Splayer-0.1.0.AppImage
 ```
+
+---
+
+## Android
+
+Splayer is available as a sideloadable APK. Enable **Unknown sources** in your Android settings, download the APK, and install it.
+Android-only features: local music library, YouTube download, equalizer with reverb, audiobooks, visualizer, mini player.
+Spotify and podcasts are desktop-only for now.
 
 ---
 

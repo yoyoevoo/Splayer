@@ -11,7 +11,8 @@ async function openUrl(url: string) {
     (platformAPI as any)?.openExternal?.(url);
   }
 }
-import { Archive, Download, FolderOpen, Monitor, Settings, Upload } from "lucide-react";
+import { Archive, Download, FolderOpen, Monitor, Settings, Upload, PlayCircle } from "lucide-react";
+import { startTour } from "@/components/TourOverlay";
 import {
   Dialog,
   DialogContent,
@@ -864,6 +865,21 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                     Discord
                   </p>
                   <DiscordSection />
+                </div>
+                <hr className="border-card-border" />
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                    Onboarding
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => startTour()}
+                  >
+                    <PlayCircle className="w-4 h-4" />
+                    Take the tour
+                  </Button>
                 </div>
               </>
             )}

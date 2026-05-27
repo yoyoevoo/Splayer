@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart2, Film, Heart, ImagePlus, Maximize2, Pencil, Search, Trash2 } from "lucide-react";
+import { BarChart2, Heart, ImagePlus, Maximize2, Pencil, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/lib/player-context";
 import { trackCoverUrl } from "@/lib/types";
@@ -559,35 +559,6 @@ export function NowPlaying() {
             <BarChart2 className="w-3.5 h-3.5" />
           </button>
 
-          {/* z:4 — floating video panel button (top-left, slot 2) */}
-          <div className="absolute top-2" style={{ left: 40, zIndex: 4 }}>
-            <button
-              onClick={onVideoButtonClick}
-              title={hasVideo ? (videoOpen ? "Close video panel" : "Open video panel") : "No video file found"}
-              className={cn(
-                "flex items-center justify-center",
-                "w-7 h-7 rounded-full backdrop-blur-sm border border-white/20 shadow",
-                "transition-all duration-200",
-                hasVideo && videoOpen
-                  ? "bg-primary/90 text-white"
-                  : hasVideo
-                    ? "bg-black/50 text-white hover:text-white hover:bg-primary/60"
-                    : "bg-black/30 text-white/25 cursor-default",
-              )}
-            >
-              <Film className="w-3.5 h-3.5" />
-            </button>
-
-            {/* "No video file found" tooltip */}
-            {noVideoTip && (
-              <div
-                className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium shadow-lg"
-                style={{ background: "rgba(0,0,0,0.85)", color: "#fff", zIndex: 10 }}
-              >
-                No video file found
-              </div>
-            )}
-          </div>
 
           {/* z:4 — Audio/Video inline toggle button (top-left, slot 3) */}
           <div className="absolute top-2" style={{ left: 72, zIndex: 4 }}>
@@ -628,6 +599,7 @@ export function NowPlaying() {
           {/* z:4 — fullscreen visualizer button (top-right corner) */}
           {!videoMode && (
             <button
+              data-testid="button-fs-visualizer"
               onClick={() => setFsVizOpen(true)}
               title="Fullscreen visualizer"
               className={cn(

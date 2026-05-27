@@ -6,6 +6,7 @@ import Player from "@/pages/Player";
 import { PlayerProvider, usePlayer } from "@/lib/player-context";
 import { checkAndRunAutoBackup } from "@/lib/auto-backup";
 import { TitleBar } from "@/components/TitleBar";
+import { TourOverlay, VizTip } from "@/components/TourOverlay";
 import { FloatingDownloadBadge } from "@/components/FloatingDownloadBadge";
 import { platformAPI, currentPlatform } from "@/lib/platform-api";
 import { trackCoverUrl } from "@/lib/types";
@@ -205,6 +206,8 @@ function App() {
           {/* Show on all Electron desktop platforms — main.cjs sets frame:false
               for every platform, so the custom titlebar is always needed. */}
           {platformAPI && currentPlatform !== "android" && <TitleBar />}
+          {platformAPI && currentPlatform !== "android" && <TourOverlay />}
+          {platformAPI && currentPlatform !== "android" && <VizTip />}
           <TrayBridge />
           <Player />
           <FloatingDownloadBadge />
