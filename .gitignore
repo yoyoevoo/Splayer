@@ -94,4 +94,5 @@ artifacts/music-player/android/keystore/*.keystore
 
 # Backup files
 **/*.bak
+**/*.bak2
 releases/*.apk
