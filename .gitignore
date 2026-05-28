@@ -56,11 +56,22 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Replit
+# Replit platform files — workspace config, agent metadata, dev-chat assets
+.replit
+.replitignore
+replit.md
+.agents/
+attached_assets/
+**/.replit-artifact/
 .cache/
 .local/
 artifacts/music-player/release/
 artifacts/music-player/node_modules/
+
+# Dead scaffolding — never re-track these directories
+artifacts/api-server/
+artifacts/mockup-sandbox/
+lib/
 
 # Native binaries and installer packages — large and platform-specific
 artifacts/music-player/android/app/src/main/jniLibs/
@@ -83,3 +94,4 @@ artifacts/music-player/android/keystore/*.keystore
 
 # Backup files
 **/*.bak
+releases/*.apk
