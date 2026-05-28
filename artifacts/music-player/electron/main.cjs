@@ -1094,17 +1094,30 @@ function getFfmpegPath() {
   return path.join(resourcesDir, exeName);
 }
 
+const _YT_HOSTNAMES = new Set([
+  "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+  "youtu.be",
+]);
+
 function extractVideoId(url) {
-  const patterns = [
-    /[?&]v=([A-Za-z0-9_-]{11})/,
-    /youtu\.be\/([A-Za-z0-9_-]{11})/,
-    /\/embed\/([A-Za-z0-9_-]{11})/,
-    /\/v\/([A-Za-z0-9_-]{11})/,
-  ];
-  for (const p of patterns) {
-    const m = String(url).match(p);
-    if (m) return m[1];
+  let u;
+  try { u = new URL(String(url)); } catch { return null; }
+  if (!_YT_HOSTNAMES.has(u.hostname.toLowerCase())) return null;
+
+  // youtu.be/<id>
+  if (u.hostname.toLowerCase() === "youtu.be") {
+    const id = u.pathname.slice(1).split("/")[0];
+    return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
   }
+
+  // ?v=<id>  (standard watch and music URLs)
+  const v = u.searchParams.get("v");
+  if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+
+  // /embed/<id>  and  /v/<id>
+  const m = u.pathname.match(/\/(?:embed|v)\/([A-Za-z0-9_-]{11})/);
+  if (m) return m[1];
+
   return null;
 }
 
@@ -2662,7 +2675,7 @@ function ensureAppDirs() {
 
 ipcMain.handle("get-app-paths", () => APP_DIRS);
 
-ipcMain.on("open-external", (_event, url) => {
+ipcMain.handle("open-external", (_event, url) => {
   if (_isSafeRemoteUrl(url)) shell.openExternal(url);
 });
 

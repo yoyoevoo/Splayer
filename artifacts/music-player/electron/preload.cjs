@@ -164,7 +164,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   /** Open a URL in the user's default browser. */
-  openExternal: (url) => ipcRenderer.send("open-external", url),
+  openExternal: (url) => ipcRenderer.invoke("open-external", url),
 
   /** Push Discord Rich Presence state from the renderer. */
   discordRpcUpdate: (state) => ipcRenderer.send("discord-rpc-update", state),
