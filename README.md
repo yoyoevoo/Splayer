@@ -12,7 +12,7 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)](#download)
 [![License](https://img.shields.io/github/license/yoyoevoo/Splayer)](LICENSE)
 [![Discord](https://img.shields.io/discord/BDQMKcGwkD?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/BDQMKcGwkD)
-
+[![YouTube](https://img.shields.io/badge/YouTube-@splayerrr-FF0000?logo=youtube&logoColor=white)](https://youtube.com/@splayerrr)
 </div>
 
 ---
