@@ -114,7 +114,8 @@ Play your local music, download from YouTube, stream Spotify playlists, follow l
 👉 **[Download latest release](https://github.com/yoyoevoo/Splayer/releases/latest)**
 
 **Linux setup:**
-`cd ~/Downloads
+```bash
+cd ~/Downloads
 chmod +x Splayer-0.2.0.AppImage
 ./Splayer-0.2.0.AppImage --no-sandbox
 ```
