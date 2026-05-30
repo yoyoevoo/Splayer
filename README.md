@@ -126,6 +126,7 @@ chmod +x Splayer-0.2.0.AppImage
 Splayer is available as a sideloadable APK. Enable **Unknown sources** in your Android settings, download the APK, and install it.
 Android-only features: local music library, YouTube download, equalizer with reverb, audiobooks, visualizer, mini player.
 Spotify and podcasts are desktop-only for now.
+👉 **[Download latest release](https://github.com/yoyoevoo/Splayer/releases/tag/v.0.1.0.Android)**
 
 ---
 
